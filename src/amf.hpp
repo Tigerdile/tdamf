@@ -11,6 +11,15 @@
  *
  * https://rtmpdump.mplayerhq.hu/
  *
+ *
+ * TO DO:
+ *
+ * * ADD OPERATORS TO ACCESS MAP/VECTOR
+ * * ADD ENCODER
+ * * ADD EASY WAY TO ADD STUFF TO OBJECT.
+ * * MAKE TESTS
+ * * DO ALL THIS FOR AMF3
+ * * PROPER EXCEPTIONS
  */
 
 #ifndef __AMF_HPP__
@@ -29,6 +38,8 @@
  *
  * These #define's are totally cribbed from librtmp
  * Though I don't think there's a better way to do this.
+ *
+ * This is needed for converting double types.
  */
 #if defined(BYTE_ORDER) && !defined(__BYTE_ORDER)
 #define __BYTE_ORDER    BYTE_ORDER
@@ -95,25 +106,33 @@ namespace Tigerdile
                 const char* val;
                 uint32_t    len;
 
+                /*
+                 * This operator is for using Value's as map keys.
+                 */
                 bool operator<(const Value &o) const
                 {
                     if(o.len < len) { // shorter string is always smaller
                         return false;
                     }
 
-                    if(o.len != len) {
+                    if(o.len != len) { // thus longer is always bigger
                         return true;
                     }
 
+                    // Same size?  Fall back to string compare.
                     return (strncmp(val, o.val, len) < 0);
                 }
 
+                /*
+                 * This operator is for using Value's as map keys.
+                 */
                 bool operator==(const Value &o) const
                 {
-                    if(o.len != len) {
+                    if(o.len != len) { // Sanity check.
                         return false;
                     }
 
+                    // Do actual compare.
                     return !strncmp(val, o.val, len);
                 }
             };
@@ -133,34 +152,29 @@ namespace Tigerdile
             /*
              * Simple decoders
              *
-             * TODO: Use my own Endian library, I think its superior to this
-             * OR use Boost Endian
+             * TODO: Improve (or remove) decodeInt24 which is needed for RTMP
+             * timestamp processing with its awful, awkward 3 byte integers.
+             * decodeInt24 is not used by AMF.  This should maybe just be moved
+             * to the RTMP server.
              *
-             * Performance-wise, I'm way better casting data as an integer
-             * as I do for ntohl, etc.
+             * TODO: decodeInt32LE - there's *one* integer in RTMP protocol
+             * that is randomly little endian which kind of screws everything
+             * up.  There's no native C code to massage the byte order to
+             * little endian.  This is, again, not used by AMF and should
+             * possibly be moved.
              */
-            static inline uint32_t decodeInt24(const unsigned char* data)
+            static inline uint32_t decodeInt24(const char* data)
             {
                 return (data[0] << 16) | (data[1] << 8) | data[2];
             }
 
-            static inline uint32_t decodeInt24(const char* data)
-            {
-                return AMF::decodeInt24((const unsigned char*) data);
-            }
-
-            static inline uint32_t decodeInt32LE(const unsigned char* data)
+            static inline uint32_t decodeInt32LE(const char* data)
             {
 #if __BYTE_ORDER == __BIG_ENDIAN
                 return (data[3] << 24) | (data[2] << 16) | (data[1] << 8) | data[0];
 #else
                 return (*((uint32_t*)data));
 #endif
-            }
-
-            static inline uint32_t decodeInt32LE(const char* data)
-            {
-                return AMF::decodeInt32LE((const unsigned char*) data);
             }
 
             static inline uint16_t decodeInt16(const char* data)
@@ -177,6 +191,12 @@ namespace Tigerdile
              * This method is shamelessly ripped off verbatim from
              * librtmp -- I couldn't figure out a way to implement
              * it any better.
+             *
+             * Doing a simple byte-flip can be done a number of
+             * ways ... but librtmp seems to have gone out of its
+             * way to figure out every byte order case for a double
+             * which is the "best" solution of the many bad solutions
+             * I've seen.
              */
             static inline double decodeNumber(const char* data)
             {
@@ -231,6 +251,14 @@ namespace Tigerdile
 #endif
             }
 
+            /*
+             * Constructor to initialize 'name'
+             */
+            AMF(const char* name = NULL, uint32_t nameSize = 0)
+            {
+                this->name.val = name;
+                this->name.len = nameSize;
+            }
 
             /*
              * This has to be defined by the individual type of AMF
@@ -265,6 +293,28 @@ namespace Tigerdile
             }
 
             /*
+             * Return size of buffer required to encode this object.
+             * How this buffer is alloc'd is up to the caller.  The
+             * resulting buffer will not be larger than this.
+             *
+             * It iterates over all items and child items, so therefore
+             * this is a potentially expensive call.
+             */
+            virtual size_t  encodedSize()
+            {
+                throw "Needs definition";
+            }
+
+            /*
+             * Method to produce a size (in bytes) to encode a given
+             * Property.
+             */
+            virtual size_t  propertySize(const Property& prop)
+            {
+                throw "Needs definition";
+            }
+
+            /*
              * Properties may be either a map or a vector, depending on
              * if we have names or not.
              */
@@ -274,9 +324,10 @@ namespace Tigerdile
                 Properties() { };
                 ~Properties() { };
             };
-            
-            Properties properties;
-            bool    isMap;
+
+            Properties  properties;
+            bool        isMap;
+            Value       name;           // This is for "typed" objects.
     };
 
     class AMF0 : public AMF
@@ -314,6 +365,22 @@ namespace Tigerdile
              */
             int decode(const char* buf, int size, bool isMap = false,
                        uint32_t arraySize = 0);
+
+            /*
+             * Return size of buffer required to encode this object.
+             * How this buffer is alloc'd is up to the caller.  The
+             * resulting buffer will not be larger than this.
+             *
+             * It iterates over all items and child items, so therefore
+             * this is a potentially expensive call.
+             */
+            size_t  encodedSize();
+
+            /*
+             * Method to produce a size (in bytes) to encode a given
+             * Property.
+             */
+            size_t  propertySize(const Property& prop);
 
             /*
              * Clean out properties

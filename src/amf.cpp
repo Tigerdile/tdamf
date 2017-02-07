@@ -54,8 +54,9 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
     this->isMap = isMap;
 
     while(size > 0 && ((arraySize == 0) || objectCount < arraySize)) {
+        // We're looking for hex 0x00 0x00 0x09 
         if((size >= 3) &&
-           (this->decodeInt24(buf) == Types::OBJECT_END)) {
+           (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x09)) {
             // We're done here
             size -= 3;
             buf += 3;
@@ -156,6 +157,43 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
                 }
 
                 break;
+            case Types::TYPED_OBJECT:
+                /* From the AMF0 spec
+                 *
+                 * If a strongly typed object has an alias registered for
+                 * its class then the type name will also be serialized.
+                 * Typed objects are considered complex types and reoccurring
+                 * instances can be sent by reference.
+                 *
+                 * This is an object with a STRING (16 bit) prefix.
+                 * Read string which is the type name, and the rest is the
+                 * object.
+                 */
+                {
+                    int res;
+
+                    if(size < 2) {
+                        // Minimum
+                        throw "TYPED_OBJECT without enough buffer for type str";
+                    }
+
+                    res = this->decodeInt16(buf);
+
+                    buf += 2;
+                    size -= 2;
+
+                    if(size < res) {
+                        throw "TYPED_OBJECT without enough buffer to load name";
+                    }
+
+                    prop.property.object = new AMF(buf, res);
+                    res = prop.property.object->decode(buf, size, true);
+
+                    buf += res;
+                    size -= res;
+                }
+
+                break;
             case Types::REFERENCE:
                 /* From the AMF0 spec
                  *
@@ -188,20 +226,6 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
                  * Similar to AMF 0, AMF 3 object reference tables, object trait
                  * reference tables and string reference tables must be reset
                  * each time a new context header or message is processed.
-                 */
-            case Types::TYPED_OBJECT:
-                /* From the AMF0 spec
-                 *
-                 * If a strongly typed object has an alias registered for
-                 * its class then the type name will also be serialized.
-                 * Typed objects are considered complex types and reoccurring
-                 * instances can be sent by reference.
-                 *
-                 * I don't really know what this is and I don't see
-                 * an implementation of it out there.  I'll dig more
-                 * if there's any demand for it.
-                 *
-                 * @TODO
                  */
             case Types::MOVIECLIP:
             case Types::RECORDSET:
@@ -297,11 +321,11 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
             case Types::AVMPLUS:
                 // Swap to AMF3 decoder.
                 {
-                    int res;
+                    int res = 0;
 
                     // This won't compile yet.
                     //prop.property.object = new AMF3();
-                    res = prop.property.object->decode(buf, size, true);
+                    //res = prop.property.object->decode(buf, size, true);
 
                     buf += res;
                     size -= res;
@@ -325,6 +349,84 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
     }
 
     return originalSize - size;
+}
+
+
+/*
+ * Method to produce a size (in bytes) to encode a given
+ * Property.  Note 'type' field always adds 1 byte
+ */
+size_t  AMF0::propertySize(const Property& prop)
+{
+    switch(prop.type) {
+        case Types::OBJECT_END:
+            return 3;
+        case Types::NUMBER:
+            return 9;
+        case Types::BOOLEAN:
+            return 2;
+        case Types::STRING:
+            return 3+prop.property.value.len;
+        case Types::ECMA_ARRAY:
+            return 5+prop.property.object->encodedSize();
+        case Types::OBJECT:
+            return 1+prop.property.object->encodedSize();
+        case Types::REFERENCE:
+            return 3;
+        case Types::TYPED_OBJECT:
+            return 3+prop.property.object->name.len
+                    +prop.property.object->encodedSize();
+        case Types::MOVIECLIP:
+        case Types::RECORDSET:
+            throw "Reserved / unsupported type!";
+        case Types::UNDEFINED:
+        case Types::UNSUPPORTED:
+        case Types::NILL:
+            return 1;
+        case Types::STRICT_ARRAY:
+            return 5+prop.property.object->encodedSize();
+        case Types::DATE:
+            return 11;
+        case Types::LONG_STRING:
+        case Types::XML_DOC:
+            return 5+prop.property.value.len;
+        case Types::AVMPLUS:
+            return 1+prop.property.object->encodedSize();
+        default:
+            throw "Unknown type received";
+    }
+}
+
+
+/*
+ * Return size of buffer required to encode this object.
+ * How this buffer is alloc'd is up to the caller.  The
+ * resulting buffer will not be larger than this.
+ *
+ * It iterates over all items and child items, so therefore
+ * this is a potentially expensive call
+ */
+size_t AMF0::encodedSize()
+{
+    size_t result = 0;
+
+    if(this->isMap) {
+        for(const auto& kv: this->properties.propMap) {
+            result += this->propertySize(kv.second);
+
+            // add in our key size, small string
+            result += kv.first.len + 2;
+        }
+
+        // This will have the end bytes
+        result += 3;
+    } else {
+        for(const Property& prop: this->properties.propList) {
+            result += this->propertySize(prop);
+        }
+    }
+
+    return result;
 }
 
 /*
