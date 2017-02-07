@@ -11,5 +11,5 @@ set (libtdamf_VERSION_MINOR 0)
 # Includes
 include_directories(src)
 add_subdirectory(src)
-
+add_subdirectory(tests)
 

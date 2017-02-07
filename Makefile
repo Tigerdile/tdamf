@@ -136,6 +136,19 @@ libtdamf/fast:
 	$(MAKE) -f src/CMakeFiles/libtdamf.dir/build.make src/CMakeFiles/libtdamf.dir/build
 .PHONY : libtdamf/fast
 
+#=============================================================================
+# Target rules for targets named test-amf0
+
+# Build rule for target.
+test-amf0: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 test-amf0
+.PHONY : test-amf0
+
+# fast build rule for target.
+test-amf0/fast:
+	$(MAKE) -f tests/CMakeFiles/test-amf0.dir/build.make tests/CMakeFiles/test-amf0.dir/build
+.PHONY : test-amf0/fast
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -146,6 +159,7 @@ help:
 	@echo "... rebuild_cache"
 	@echo "... libtdamf_static"
 	@echo "... libtdamf"
+	@echo "... test-amf0"
 .PHONY : help
 
 

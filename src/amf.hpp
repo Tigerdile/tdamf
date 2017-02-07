@@ -27,8 +27,8 @@
 
 #include <map>
 #include <vector>
-
 #include <cstring>
+
 #include <arpa/inet.h>
 #include <sys/param.h>
 #include <stdint.h>
@@ -319,10 +319,11 @@ namespace Tigerdile
              * if we have names or not.
              */
             union Properties {
-                std::map<Value, Property>   propMap;
-                std::vector<Property>       propList;
-                Properties() { };
-                ~Properties() { };
+                std::map<Value, Property>*  propMap;
+                std::vector<Property>*      propList;
+                Properties() {
+                    memset(this, 0, sizeof(Properties));
+                }
             };
 
             Properties  properties;

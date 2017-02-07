@@ -51,7 +51,11 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
     int originalSize = size;
     int objectCount = 0;
 
-    this->isMap = isMap;
+    if((this->isMap = isMap) && (!this->properties.propMap)) {
+        this->properties.propMap = new std::map<Value, Property>();
+    } else if(!this->properties.propList) {
+        this->properties.propList = new std::vector<Property>();
+    }
 
     while(size > 0 && ((arraySize == 0) || objectCount < arraySize)) {
         // We're looking for hex 0x00 0x00 0x09 
@@ -338,11 +342,11 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
         // Add it to our map or vector
         // Use emplace_back ?  Could save some CPU
         if(isMap) {
-            this->properties.propMap.insert(
+            this->properties.propMap->insert(
                 std::pair<Value, Property>(name, prop)
             );
         } else {
-            this->properties.propList.push_back(prop);
+            this->properties.propList->push_back(prop);
         }
 
         objectCount++;
@@ -411,7 +415,7 @@ size_t AMF0::encodedSize()
     size_t result = 0;
 
     if(this->isMap) {
-        for(const auto& kv: this->properties.propMap) {
+        for(const auto& kv: *this->properties.propMap) {
             result += this->propertySize(kv.second);
 
             // add in our key size, small string
@@ -421,7 +425,7 @@ size_t AMF0::encodedSize()
         // This will have the end bytes
         result += 3;
     } else {
-        for(const Property& prop: this->properties.propList) {
+        for(const Property& prop: *this->properties.propList) {
             result += this->propertySize(prop);
         }
     }
@@ -434,9 +438,9 @@ size_t AMF0::encodedSize()
  */
 AMF0::~AMF0()
 {
-    if(this->isMap) {
+    if(this->isMap && this->properties.propMap) {
         // Iterate over map, delete what's an object type
-        for(auto& kv: this->properties.propMap) {
+        for(auto& kv: *this->properties.propMap) {
             switch((Types)kv.second.type) {
                 case Types::OBJECT:
                 case Types::ECMA_ARRAY:
@@ -447,8 +451,10 @@ AMF0::~AMF0()
                     break;
             }
         }
-    } else {
-        for(Property& prop : this->properties.propList) {
+
+        delete this->properties.propMap;
+    } else if(this->properties.propList) {
+        for(Property& prop : *this->properties.propList) {
             switch((Types)prop.type) {
                 case Types::OBJECT:
                 case Types::ECMA_ARRAY:
@@ -459,5 +465,7 @@ AMF0::~AMF0()
                     break;
             }
         }
+
+        delete this->properties.propList;
     }
 }
