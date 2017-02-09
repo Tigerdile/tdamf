@@ -19,7 +19,7 @@
  * * ADD EASY WAY TO ADD STUFF TO OBJECT.
  * * MAKE TESTS
  * * DO ALL THIS FOR AMF3
- * * PROPER EXCEPTIONS
+ * * PROPER EXCEPTIONS - out_of_buffer, return number of bytes needed
  */
 
 #ifndef __AMF_HPP__
@@ -28,10 +28,11 @@
 #include <map>
 #include <vector>
 #include <cstring>
+#include <cstdint>
+#include <stdexcept>
 
 #include <arpa/inet.h>
 #include <sys/param.h>
-#include <stdint.h>
 
 /*
  * Define byte order if not defined
@@ -42,47 +43,49 @@
  * This is needed for converting double types.
  */
 #if defined(BYTE_ORDER) && !defined(__BYTE_ORDER)
-#define __BYTE_ORDER    BYTE_ORDER
+#   define __BYTE_ORDER    BYTE_ORDER
 #endif
 
 #if defined(BIG_ENDIAN) && !defined(__BIG_ENDIAN)
-#define __BIG_ENDIAN	BIG_ENDIAN
+#   define __BIG_ENDIAN    BIG_ENDIAN
 #endif
 
 #if defined(LITTLE_ENDIAN) && !defined(__LITTLE_ENDIAN)
-#define __LITTLE_ENDIAN	LITTLE_ENDIAN
+#   define __LITTLE_ENDIAN LITTLE_ENDIAN
 #endif
 
 /* define default endianness */
 #ifndef __LITTLE_ENDIAN
-#define __LITTLE_ENDIAN	1234
+#   define __LITTLE_ENDIAN    1234
 #endif
 
 #ifndef __BIG_ENDIAN
-#define __BIG_ENDIAN	4321
+#   define __BIG_ENDIAN    4321
 #endif
 
 #ifndef __BYTE_ORDER
-#warning "Byte order not defined on your system, assuming little endian!"
-#define __BYTE_ORDER	__LITTLE_ENDIAN
+#   warning "Byte order not defined on your system, assuming little endian!"
+#   define __BYTE_ORDER    __LITTLE_ENDIAN
 #endif
 
-/* ok, we assume to have the same float word order and byte order if float word order is not defined */
+/* ok, we assume to have the same float word order and byte order
+ * if float word order is not defined 
+ */
 #ifndef __FLOAT_WORD_ORDER
-#warning "Float word order not defined, assuming the same as byte order!"
-#define __FLOAT_WORD_ORDER	__BYTE_ORDER
+#   warning "Float word order not defined, assuming the same as byte order!"
+#   define __FLOAT_WORD_ORDER    __BYTE_ORDER
 #endif
 
 #if !defined(__BYTE_ORDER) || !defined(__FLOAT_WORD_ORDER)
-#error "Undefined byte or float word order!"
+#   error "Undefined byte or float word order!"
 #endif
 
 #if __FLOAT_WORD_ORDER != __BIG_ENDIAN && __FLOAT_WORD_ORDER != __LITTLE_ENDIAN
-#error "Unknown/unsupported float word order!"
+#   error "Unknown/unsupported float word order!"
 #endif
 
 #if __BYTE_ORDER != __BIG_ENDIAN && __BYTE_ORDER != __LITTLE_ENDIAN
-#error "Unknown/unsupported byte order!"
+#   error "Unknown/unsupported byte order!"
 #endif
 
 
@@ -150,7 +153,7 @@ namespace Tigerdile
             };
 
             /*
-             * Simple decoders
+             * PRIMITIVE DECODERS
              *
              * TODO: Improve (or remove) decodeInt24 which is needed for RTMP
              * timestamp processing with its awful, awkward 3 byte integers.
@@ -170,11 +173,12 @@ namespace Tigerdile
 
             static inline uint32_t decodeInt32LE(const char* data)
             {
-#if __BYTE_ORDER == __BIG_ENDIAN
-                return (data[3] << 24) | (data[2] << 16) | (data[1] << 8) | data[0];
-#else
-                return (*((uint32_t*)data));
-#endif
+#               if __BYTE_ORDER == __BIG_ENDIAN
+                    return (data[3] << 24) | (data[2] << 16) |
+                           (data[1] << 8) | data[0];
+#               else
+                    return (*((uint32_t*)data));
+#               endif
             }
 
             static inline uint16_t decodeInt16(const char* data)
@@ -184,7 +188,7 @@ namespace Tigerdile
 
             static inline uint32_t decodeInt32(const char* data)
             {
-                return ntohs(*((uint32_t*)data));
+                return ntohl(*((uint32_t*)data));
             }
 
             /*
@@ -200,59 +204,132 @@ namespace Tigerdile
              */
             static inline double decodeNumber(const char* data)
             {
-#if __FLOAT_WORD_ORDER == __BYTE_ORDER
-#if __BYTE_ORDER == __BIG_ENDIAN
-                return (*((double*)data));
-#elif __BYTE_ORDER == __LITTLE_ENDIAN
-                double ret;
-                unsigned char *ci, *co;
-                ci = (unsigned char *)data;
-                co = (unsigned char *)&ret;
-                co[0] = ci[7];
-                co[1] = ci[6];
-                co[2] = ci[5];
-                co[3] = ci[4];
-                co[4] = ci[3];
-                co[5] = ci[2];
-                co[6] = ci[1];
-                co[7] = ci[0];
-                return ret;
-#endif
-#else
-#if __BYTE_ORDER == __LITTLE_ENDIAN	/* __FLOAT_WORD_ORER == __BIG_ENDIAN */
-                double ret;
-                unsigned char *ci, *co;
-                ci = (unsigned char *)data;
-                co = (unsigned char *)&ret;
-                co[0] = ci[3];
-                co[1] = ci[2];
-                co[2] = ci[1];
-                co[3] = ci[0];
-                co[4] = ci[7];
-                co[5] = ci[6];
-                co[6] = ci[5];
-                co[7] = ci[4];
-                return ret;
-#else /* __BYTE_ORDER == __BIG_ENDIAN && __FLOAT_WORD_ORER == __LITTLE_ENDIAN */
-                double ret;
-                unsigned char *ci, *co;
-                ci = (unsigned char *)data;
-                co = (unsigned char *)&ret;
-                co[0] = ci[4];
-                co[1] = ci[5];
-                co[2] = ci[6];
-                co[3] = ci[7];
-                co[4] = ci[0];
-                co[5] = ci[1];
-                co[6] = ci[2];
-                co[7] = ci[3];
-                return ret;
-#endif
-#endif
+#               if __FLOAT_WORD_ORDER == __BYTE_ORDER
+#                   if __BYTE_ORDER == __BIG_ENDIAN
+                        return (*((double*)data));
+#                   elif __BYTE_ORDER == __LITTLE_ENDIAN
+                        double ret;
+                        unsigned char *ci, *co;
+                        ci = (unsigned char *)data;
+                        co = (unsigned char *)&ret;
+                        co[0] = ci[7];
+                        co[1] = ci[6];
+                        co[2] = ci[5];
+                        co[3] = ci[4];
+                        co[4] = ci[3];
+                        co[5] = ci[2];
+                        co[6] = ci[1];
+                        co[7] = ci[0];
+                        return ret;
+#                   endif
+#               else
+#                   if __BYTE_ORDER == __LITTLE_ENDIAN
+                        /* __FLOAT_WORD_ORER == __BIG_ENDIAN */
+                        double ret;
+                        unsigned char *ci, *co;
+                        ci = (unsigned char *)data;
+                        co = (unsigned char *)&ret;
+                        co[0] = ci[3];
+                        co[1] = ci[2];
+                        co[2] = ci[1];
+                        co[3] = ci[0];
+                        co[4] = ci[7];
+                        co[5] = ci[6];
+                        co[6] = ci[5];
+                        co[7] = ci[4];
+                        return ret;
+#                   else
+    /* __BYTE_ORDER == __BIG_ENDIAN && __FLOAT_WORD_ORER == __LITTLE_ENDIAN */
+                        double ret;
+                        unsigned char *ci, *co;
+                        ci = (unsigned char *)data;
+                        co = (unsigned char *)&ret;
+                        co[0] = ci[4];
+                        co[1] = ci[5];
+                        co[2] = ci[6];
+                        co[3] = ci[7];
+                        co[4] = ci[0];
+                        co[5] = ci[1];
+                        co[6] = ci[2];
+                        co[7] = ci[3];
+                        return ret;
+#                   endif
+#               endif
+            }
+
+
+            /*
+             * PRIMITIVE ENCODERS
+             *
+             * NOTE: These encode methods assume that buffer size
+             * checking is done by the caller (as is normally the case)
+             */
+            static inline void encodeInt16(uint16_t val, char* data)
+            {
+                (*((uint16_t*)data)) = htons(val);
+            }
+
+            static inline void encodeInt32(uint32_t val, const char* data)
+            {
+                (*((uint32_t*)data)) = htonl(val);
             }
 
             /*
-             * Constructor to initialize 'name'
+             * This was also shamelessly ripped from librtmp
+             */
+            static inline void encodeNumber(double val, char *data)
+            {
+#               if __FLOAT_WORD_ORDER == __BYTE_ORDER
+#                   if __BYTE_ORDER == __BIG_ENDIAN
+                        (*((double*)data)) = val;
+
+#                   elif __BYTE_ORDER == __LITTLE_ENDIAN
+                        unsigned char *ci, *co;
+                        ci = (unsigned char *)&val;
+                        co = (unsigned char *)data;
+                        co[0] = ci[7];
+                        co[1] = ci[6];
+                        co[2] = ci[5];
+                        co[3] = ci[4];
+                        co[4] = ci[3];
+                        co[5] = ci[2];
+                        co[6] = ci[1];
+                        co[7] = ci[0];
+#                   endif
+#               else
+#                   if __BYTE_ORDER == __LITTLE_ENDIAN
+                        /* __FLOAT_WORD_ORER == __BIG_ENDIAN */
+                        unsigned char *ci, *co;
+                        ci = (unsigned char *)&val;
+                        co = (unsigned char *)data;
+                        co[0] = ci[3];
+                        co[1] = ci[2];
+                        co[2] = ci[1];
+                        co[3] = ci[0];
+                        co[4] = ci[7];
+                        co[5] = ci[6];
+                        co[6] = ci[5];
+                        co[7] = ci[4];
+#                   else
+    /* __BYTE_ORDER == __BIG_ENDIAN && __FLOAT_WORD_ORER == __LITTLE_ENDIAN */
+                        unsigned char *ci, *co;
+                        ci = (unsigned char *)&val;
+                        co = (unsigned char *)data;
+                        co[0] = ci[4];
+                        co[1] = ci[5];
+                        co[2] = ci[6];
+                        co[3] = ci[7];
+                        co[4] = ci[0];
+                        co[5] = ci[1];
+                        co[6] = ci[2];
+                        co[7] = ci[3];
+#                   endif
+#               endif
+            }
+
+            /*
+             * Constructor to initialize 'name'.  'name' is used by
+             * AMF TypedObjects.
              */
             AMF(const char* name = NULL, uint32_t nameSize = 0)
             {
@@ -289,7 +366,7 @@ namespace Tigerdile
             virtual int decode(const char* buf, int size, bool isMap = false,
                                uint32_t arraySize = 0)
             {
-                throw "Needs definition";
+                throw std::runtime_error("Needs definition");
             }
 
             /*
@@ -302,16 +379,50 @@ namespace Tigerdile
              */
             virtual size_t  encodedSize()
             {
-                throw "Needs definition";
+                throw std::runtime_error("Needs definition");
             }
 
             /*
              * Method to produce a size (in bytes) to encode a given
-             * Property.
+             * Property.  For complex objects, this will run encodedSize
+             * on those objects.  encodedSize, in turn, calls this to
+             * size its component properties.
              */
             virtual size_t  propertySize(const Property& prop)
             {
-                throw "Needs definition";
+                throw std::runtime_error("Needs definition");
+            }
+
+            /*
+             * This encodes the object into an AMF data stream suitable
+             * for transmission or storage to file system.
+             *
+             * Requires a buffer that we will write to, with a size
+             * parameter to say how much buffer is provided.  It will
+             * return how many bytes of that buffer we actually consumed.
+             *
+             * You can use the "encodedSize" call to figure out the
+             * minimum buffer size required to encode an object.
+             */
+            virtual int encode(char* buf, int size)
+            {
+                throw std::runtime_error("Needs definition");
+            }
+
+            /*
+             * This encodes an individual AMF property into the provided
+             * buffer.  The buffer must be large enough to handle it.
+             *
+             * You will usually use encode to encode a whole AMF
+             * message, but if you need to encode some small part of
+             * an AMF message, you can use this instead.
+             *
+             * Returns number of bytes consumed.
+             */
+            virtual int encodeProperty(char* buf, int size,
+                                       const Property& prop)
+            {
+                throw std::runtime_error("Needs definition");
             }
 
             /*
@@ -330,6 +441,12 @@ namespace Tigerdile
             bool        isMap;
             Value       name;           // This is for "typed" objects.
     };
+
+/*****************************************************************************
+ * AMF0
+ *
+ * Version 0 of AMF
+ *****************************************************************************/
 
     class AMF0 : public AMF
     {
@@ -384,10 +501,47 @@ namespace Tigerdile
             size_t  propertySize(const Property& prop);
 
             /*
+             * This encodes the object into an AMF data stream suitable
+             * for transmission or storage to file system.
+             *
+             * Requires a buffer that we will write to, with a size
+             * parameter to say how much buffer is provided.  It will
+             * return how many bytes of that buffer we actually consumed.
+             *
+             * You can use the "encodedSize" call to figure out the
+             * minimum buffer size required to encode an object.
+             * IMPLEMENTATION NOTE: The top level AMF0 object has no
+             * type; it should be treated like a list.  encodeProperty
+             * will use this method, but it will add the window dressing
+             * (any pre-amble or post-amble bytes).
+             *
+             * The point is, only call this on a top-level AMF0 object.
+             */
+            int encode(char* buf, int size);
+
+            /*
+             * This encodes an individual AMF property into the provided
+             * buffer.  The buffer must be large enough to handle it.
+             *
+             * You will usually use encode to encode a whole AMF
+             * message, but if you need to encode some small part of
+             * an AMF message, you can use this instead.
+             *
+             * Returns number of bytes consumed.
+             */
+            int encodeProperty(char* buf, int size, const Property& prop);
+
+            /*
              * Clean out properties
              */
             ~AMF0();
     };
+
+/*****************************************************************************
+ * AMF3
+ *
+ * Version 3 of AMF
+ *****************************************************************************/
 
 /*
     class AMF3 : public AMF
@@ -397,6 +551,16 @@ namespace Tigerdile
                                 XML_DOC, DATE, ARRAY, OBJECT, XML, BYTE_ARRAY };
     };
  */
+
+/*****************************************************************************
+ * Exceptions
+ *
+ * These are exceptions that can be thrown by the AMF library.  We will
+ * try to throw helpful exceptions that give enough information to diagnose
+ * a potential problem.
+ *****************************************************************************/
+
+
 }
 
 

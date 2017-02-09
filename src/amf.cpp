@@ -434,6 +434,228 @@ size_t AMF0::encodedSize()
 }
 
 /*
+ * This encodes the object into an AMF data stream suitable
+ * for transmission or storage to file system.
+ *
+ * Requires a buffer that we will write to, with a size
+ * parameter to say how much buffer is provided.  It will
+ * return how many bytes of that buffer we actually consumed.
+ *
+ * You can use the "encodedSize" call to figure out the
+ * minimum buffer size required to encode an object.
+ *
+ * IMPLEMENTATION NOTE: The top level AMF0 object has no
+ * type; it should be treated like a list.  encodeProperty
+ * will use this method, but it will add the window dressing
+ * (any pre-amble or post-amble bytes).
+ *
+ * The point is, only call this on a top-level AMF0 object.
+ */
+int AMF0::encode(char* buf, int size)
+{
+    int consumed;
+    int originalSize = size;
+
+    // How we iterate depends on isMap
+    if(this->isMap) {
+        for(auto& kv: *this->properties.propMap) {
+            consumed = this->encodeProperty(buf, size, kv.second);
+            size -= consumed;
+            buf += consumed;
+        }
+    } else {
+        for(const Property& prop: *this->properties.propList) {
+            consumed = this->encodeProperty(buf, size, prop);
+            size -= consumed;
+            buf += consumed;
+        }
+    }
+
+    return originalSize - size;
+}
+
+/*
+ * This encodes an individual AMF property into the provided
+ * buffer.  The buffer must be large enough to handle it.
+ *
+ * You will usually use encode to encode a whole AMF
+ * message, but if you need to encode some small part of
+ * an AMF message, you can use this instead.
+ *
+ * Returns number of bytes consumed.
+ */
+int AMF0::encodeProperty(char* buf, int size, const Property& prop)
+{
+    int consumed = 0; // used in a few places.
+
+    switch(prop.type) {
+        case Types::OBJECT_END:
+            // We probably don't have a property of this type,
+            // but we can encode it if we do!
+            if(size < 3) {
+                throw "Not enough buffer room to write OBJECT_END.";
+            }
+
+            buf[0] = 0x00;
+            buf[1] = 0x00;
+            buf[2] = 0x09;
+
+            return 3;
+        case Types::NUMBER:
+            // Type byte + 8 byte double
+            if(size < 9) {
+                throw "Not enough buffer to write NUMBER";
+            }
+
+            buf[0] = prop.type;
+            this->encodeNumber(prop.property.number, &buf[1]);
+
+            return 9;
+        case Types::BOOLEAN:
+            // Type byte + 1 byte boolean
+            if(size < 2) {
+                throw "Not enough buffer room to write BOOLEAN";
+            }
+
+            buf[0] = prop.type;
+            buf[1] = (char)(prop.property.number != 0);
+
+            return 2;
+        case Types::STRING:
+            // Small string - type byte + 2 byte len + string
+            if(size < 3+prop.property.value.len) {
+                throw "Not enough buffer to write STRING";
+            }
+
+            buf[0] = prop.type;
+            this->encodeInt16(prop.property.value.len, &buf[1]);
+            memcpy(&buf[3], prop.property.value.val, prop.property.value.len);
+
+            return 3+prop.property.value.len;
+        case Types::ECMA_ARRAY:
+            // This is identical to object, except it has a 4 byte header
+            if(size < 5) {
+                throw "Not enough buffer to write ECMA_ARRAY";
+            }
+
+            buf[0] = prop.type;
+            this->encodeInt32(prop.property.object->properties.propList->size(),
+                              &buf[1]);
+
+            consumed = 5;
+        case Types::TYPED_OBJECT:
+        case Types::OBJECT:
+            // We may have fallen through from ECMA_Array.  if consumed > 0
+            if(!consumed) {
+                if(size < 1) {
+                    // need 1 byte + length of name
+                    throw "Not enough buffer to write OBJECT/TYPED_OBJECT";
+                }
+
+                buf[0] = prop.type;
+                consumed++;
+
+                // write name if typed object, if available.
+                // for my purposes this is a minority case and therefore
+                // this somewhat unoptimized process is okay :P
+                if(prop.property.object->name.len) {
+                    // check size
+                    if((size - 1) < (2+prop.property.object->name.len)) {
+                        throw "Not enough buffer to write TYPED_OBJECT";
+                    }
+
+                    // write string
+                    this->encodeInt16(prop.property.object->name.len, &buf[1]);
+                    memcpy(&buf[3], prop.property.object->name.val,
+                           prop.property.object->name.len);
+
+                    consumed += 2 + prop.property.object->name.len;
+                }
+            }
+
+            consumed += prop.property.object->encode(&buf[consumed],
+                                                     size-consumed);
+
+            // Now add OBJECT_END
+            if(size - consumed < 3) {
+                throw "Not enough buffer to write terminating OBJECT_END";
+            }
+
+            buf[consumed] = 0x00;
+            buf[consumed+1] = 0x00;
+            buf[consumed+2] = 0x09;
+
+            return consumed + 3;
+        case Types::REFERENCE:
+            // NOT implemented yet.
+            throw "REFERENCE not implemented yet";
+            // return 3;
+        case Types::MOVIECLIP:
+        case Types::RECORDSET:
+            throw "Reserved / unsupported type!";
+        case Types::UNDEFINED:
+        case Types::UNSUPPORTED:
+        case Types::NILL:
+            // These are just a type with no data
+            if(size < 1) {
+                throw "Not enough buffer to write NULL type";
+            }
+
+            buf[0] = prop.type;
+            return 1;
+        case Types::STRICT_ARRAY:
+            // 4 byte size followed by elements
+            if(size < 5) {
+                throw "Not enough buffer to write STRICT_ARRAY";
+            }
+
+            buf[0] = prop.type;
+            this->encodeInt32(prop.property.object->properties.propList->size(),
+                              &buf[1]);
+
+            return 5+prop.property.object->encode(&buf[5], size-5);
+        case Types::DATE:
+            // type byte + 8 byte NUMBER + 2 bytes all 0's
+            // NOTE: if we decided to implement TZ's, we need to implement
+            // it here too.
+            if(size < 11) {
+                throw "Not enough buffer to write DATE";
+            }
+
+            buf[0] = prop.type;
+            this->encodeNumber(prop.property.number, &buf[1]);
+            buf[9] = 0x00;
+            buf[10] = 0x00;
+
+            return 11;
+        case Types::LONG_STRING:
+        case Types::XML_DOC:
+            // These are identical except for type byte
+            // type bite + 4 byte len + string
+            if(size < 5+prop.property.value.len) {
+                throw "Not enough buffer to write LONG_STRING/XML_DOC";
+            }
+
+            buf[0] = prop.type;
+            this->encodeInt32(prop.property.value.len, &buf[1]);
+            memcpy(&buf[5], prop.property.value.val, prop.property.value.len);
+
+            return 5+prop.property.value.len;
+        case Types::AVMPLUS:
+            // Type byte followed by AMF03 encoding
+            if(size < 1) {
+                throw "Not enough buffer to write AVMPLUS";
+            }
+
+            buf[0] = prop.type;
+            return 1+prop.property.object->encode(&buf[1], size-1);
+        default:
+            throw "Unknown type received";
+    }
+}
+
+
+/*
  * AMF0 destructor to clean out properties that use objects.
  */
 AMF0::~AMF0()
