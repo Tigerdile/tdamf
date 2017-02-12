@@ -35,3 +35,6 @@ CMakeFiles/*
 cmake_install.cmake
 Makefile
 
+# Ignore test output
+tests/test-amf0
+

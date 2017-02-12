@@ -25,3 +25,39 @@ Okay ... I never say never, but there's a few things I am not planning on suppor
 * C++0x support - I chose C++ 11, and I'm sticking with it.  Chances are whatever developer is making something with AMF has access to a C++11 compiler.  I don't use too many C++11 constructs so "back porting" it to C++0x would be possible, but again, I have no use for it.
 * File / Stream suppport - My use case works with in-memory buffers only.  Specifically, RTMP; I get chunk streams with this stuff encoded, so I always have a complete AMF structure in my memory and a fairly small one at that.  As such, my use case is to allocate my buffer once and reuse it as much as possible for performance reasons.  If you need a file stream or something that dynamically allocates memory, this library is probably not for you and there are others out there that may suit you better.  But I doubt many people are working with AMF's so big you really need to chunk it to a file in order to use it all.
 * References - As of the time of this writing, I'm not supporting the AMF 'Reference' type.  This is mostly because I'm not 100% clear on how it works.  If I got some sample data showing reference types in action, I would feel more comfortable implementing them.  The code has notes as to what I've figured out so far in comments.  This seems common to most AMF libraries; the 'reference' type is an unpopular feature.
+
+# COMPILE
+This uses the cmake build system.  To build a version that will work with a debugger (i.e. has debugger symbols), use:
+
+```
+cmake -DCMAKE_BUILD_TYPE=Debug .
+```
+
+If you don't care about debugging symbols, then just:
+
+```
+cmake .
+```
+
+In either case, then typing:
+
+```
+make
+```
+
+CMake obfuscates the build in what is (to me) an extremely annoying fashion, so if you want to see what commands its actually running, try:
+
+```
+make VERBOSE=1
+```
+
+Either way, that will build the library.  The library will build a dynamic and a static in 'src'.  There is no install process yet.  You will need amf.hpp to build against the library.  A simple way to install would be:
+
+```
+cp src/*.a src/*.so src/*dylib /usr/local/lib
+cp src/amf.hpp /usr/local/include
+```
+
+dylib is for Macs, so is for every other kind of UNIX, so you can exclude whichever one you don't actually need.  It will only make one or the other based on your OS :)
+
+No other libraries or dependencies are required.

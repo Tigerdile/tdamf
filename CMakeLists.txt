@@ -9,7 +9,8 @@ set (libtdamf_VERSION_MAJOR 1)
 set (libtdamf_VERSION_MINOR 0)
 
 # Debug defines
-add_definitions(-DDEBUG)
+# This will add a lot of annoying stdout :)
+#add_definitions(-DDEBUG)
 
 # Includes
 include_directories(src)
