@@ -51,6 +51,16 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
     int originalSize = size;
     int objectCount = 0;
 
+#   ifdef DEBUG
+        if(isMap){
+            LOG("Decode MAP loop, size: " << size);
+        } else if(arraySize) {
+            LOG("Decode LIST loop, size: " << size << " max: " << arraySize);
+        } else{
+            LOG("Decode unlimited LIST loop, size: " << size);
+        }
+#   endif
+
     if((this->isMap = isMap) && (!this->properties.propMap)) {
         this->properties.propMap = new std::map<Value, Property>();
     } else if(!this->properties.propList) {
@@ -190,7 +200,7 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
                         throw "TYPED_OBJECT without enough buffer to load name";
                     }
 
-                    prop.property.object = new AMF(buf, res);
+                    prop.property.object = new AMF0(buf, res);
                     res = prop.property.object->decode(buf, size, true);
 
                     buf += res;
@@ -364,38 +374,78 @@ size_t  AMF0::propertySize(const Property& prop)
 {
     switch(prop.type) {
         case Types::OBJECT_END:
+            LOG("OBJE: 3");
             return 3;
         case Types::NUMBER:
+            LOG("NUMB: 9");
             return 9;
         case Types::BOOLEAN:
+            LOG("BOOL: 2");
             return 2;
         case Types::STRING:
+            LOG("SSTR: " << 3+prop.property.value.len);
             return 3+prop.property.value.len;
         case Types::ECMA_ARRAY:
-            return 5+prop.property.object->encodedSize();
+#           ifdef DEBUG
+                {
+                    int encSize = 5+prop.property.object->encodedSize();
+                    LOG("EARR: " << encSize);
+                    return encSize;
+                }
+#           else
+                return 5+prop.property.object->encodedSize();
+#           endif
+        case Types::AVMPLUS: // These are the same computation.
         case Types::OBJECT:
-            return 1+prop.property.object->encodedSize();
+#           ifdef DEBUG
+                {
+                    int encSize = 1+prop.property.object->encodedSize();
+                    LOG("AOBJ: " << encSize);
+                    return encSize;
+                }
+#           else
+                return 1+prop.property.object->encodedSize();
+#           endif
         case Types::REFERENCE:
+            LOG("REFE: 3");
             return 3;
         case Types::TYPED_OBJECT:
-            return 3+prop.property.object->name.len
-                    +prop.property.object->encodedSize();
+#           ifdef DEBUG
+                {
+                    int encSize = 3+prop.property.object->name.len
+                                  +prop.property.object->encodedSize();
+                    LOG("TOBJ: " << encSize);
+                    return encSize;
+                }
+#           else
+                return 3+prop.property.object->name.len
+                        +prop.property.object->encodedSize();
+#           endif
         case Types::MOVIECLIP:
         case Types::RECORDSET:
             throw "Reserved / unsupported type!";
         case Types::UNDEFINED:
         case Types::UNSUPPORTED:
         case Types::NILL:
+            LOG("NULL: 1");
             return 1;
         case Types::STRICT_ARRAY:
-            return 5+prop.property.object->encodedSize();
+#           ifdef DEBUG
+                {
+                    int encSize = 5+prop.property.object->encodedSize();
+                    LOG("SARR: " << encSize);
+                    return encSize;
+                }
+#           else
+                return 5+prop.property.object->encodedSize();
+#           endif
         case Types::DATE:
+            LOG("DATE: 11");
             return 11;
         case Types::LONG_STRING:
         case Types::XML_DOC:
+            LOG("LSTR:" << 5+prop.property.value.len);
             return 5+prop.property.value.len;
-        case Types::AVMPLUS:
-            return 1+prop.property.object->encodedSize();
         default:
             throw "Unknown type received";
     }
@@ -414,21 +464,27 @@ size_t AMF0::encodedSize()
 {
     size_t result = 0;
 
+    LOG(">>> ENTER encodedSize");
+
     if(this->isMap) {
         for(const auto& kv: *this->properties.propMap) {
             result += this->propertySize(kv.second);
 
             // add in our key size, small string
+            LOG("ENTR: " << kv.first.len + 2);
             result += kv.first.len + 2;
         }
 
         // This will have the end bytes
+        LOG("ENDM: 3");
         result += 3;
     } else {
         for(const Property& prop: *this->properties.propList) {
             result += this->propertySize(prop);
         }
     }
+
+    LOG("<<< EXIT encodedSize");
 
     return result;
 }
@@ -459,6 +515,16 @@ int AMF0::encode(char* buf, int size)
     // How we iterate depends on isMap
     if(this->isMap) {
         for(auto& kv: *this->properties.propMap) {
+            // Encode name
+            if(size < 3+kv.first.len) {
+                throw "Not enough buffer to write key name";
+            }
+
+            this->encodeInt16(kv.first.len, &buf[0]);
+            memcpy(&buf[2], kv.first.val, kv.first.len);
+            size -= 2+kv.first.len;
+            buf += 2+kv.first.len;
+
             consumed = this->encodeProperty(buf, size, kv.second);
             size -= consumed;
             buf += consumed;

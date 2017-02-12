@@ -8,6 +8,9 @@ set (CMAKE_CXX_STANDARD 11)
 set (libtdamf_VERSION_MAJOR 1)
 set (libtdamf_VERSION_MINOR 0)
 
+# Debug defines
+add_definitions(-DDEBUG)
+
 # Includes
 include_directories(src)
 add_subdirectory(src)

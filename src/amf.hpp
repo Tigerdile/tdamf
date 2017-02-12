@@ -88,6 +88,13 @@
 #   error "Unknown/unsupported byte order!"
 #endif
 
+// If we're debugging, let's add debugging commands
+#ifdef DEBUG
+#   include <iostream>
+#   define LOG(s)   std::cout << "DEBUG: " << s << std::endl
+#else
+#   define LOG(s)
+#endif
 
 namespace Tigerdile
 {
@@ -328,16 +335,6 @@ namespace Tigerdile
             }
 
             /*
-             * Constructor to initialize 'name'.  'name' is used by
-             * AMF TypedObjects.
-             */
-            AMF(const char* name = NULL, uint32_t nameSize = 0)
-            {
-                this->name.val = name;
-                this->name.len = nameSize;
-            }
-
-            /*
              * This has to be defined by the individual type of AMF
              * call.
              *
@@ -457,6 +454,16 @@ namespace Tigerdile
                                 OBJECT_END, STRICT_ARRAY, DATE, LONG_STRING,
                                 UNSUPPORTED, RECORDSET, XML_DOC, TYPED_OBJECT,
                                 AVMPLUS, INVALID = 0xff };
+
+            /*
+             * Constructor to initialize 'name'.  'name' is used by
+             * AMF TypedObjects.
+             */
+            AMF0(const char* name = NULL, uint32_t nameSize = 0)
+            {
+                this->name.val = name;
+                this->name.len = nameSize;
+            }
 
             /*
              * This will process some buffer of data and load it into
