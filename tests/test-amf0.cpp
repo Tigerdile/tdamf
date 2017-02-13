@@ -214,11 +214,34 @@ int main(int argc, char** argv, char** envp)
     char*   buf = (char*)malloc(totalSize);
 
     // encode!
-    std::cout << "Bytes left after encode: " << sourceAMF.encode(buf, totalSize)
-              << std::endl;
+    size_t  encodedSize = sourceAMF.encode(buf, totalSize);
+    std::cout << "Bytes left after encode: " << encodedSize << std::endl;
+
+    // First check
+    if(encodedSize != totalSize) {
+        std::cout << "Estimate size and encoded size not the same!" << std::endl;
+        return (int) -1;
+    }
 
     // decode!
+    AMF0 targetAMF;
+    int consumed;
 
+    try {
+        consumed = targetAMF.decode(buf, totalSize);
+    } catch(const char* e) {
+        std::cout << "Got exception: " << e << std::endl;
+        return (int) -1;
+    }
+
+    std::cout << "Bytes consumed from buffer after decode: " << consumed
+              << std::endl;
+
+    // Second check!
+    if(totalSize != consumed) {
+        std::cout << "Didn't consume the right amount of bytes!" << std::endl;
+        return (int) -1;
+    }
 
     // Compare!
 

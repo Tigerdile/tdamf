@@ -34,6 +34,9 @@
 #include <arpa/inet.h>
 #include <sys/param.h>
 
+#include <iostream>
+
+
 /*
  * Define byte order if not defined
  *
@@ -276,7 +279,7 @@ namespace Tigerdile
                 (*((uint16_t*)data)) = htons(val);
             }
 
-            static inline void encodeInt32(uint32_t val, const char* data)
+            static inline void encodeInt32(uint32_t val, char* data)
             {
                 (*((uint32_t*)data)) = htonl(val);
             }

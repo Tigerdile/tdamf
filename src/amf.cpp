@@ -67,7 +67,7 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
         this->properties.propList = new std::vector<Property>();
     }
 
-    while(size > 0 && ((arraySize == 0) || objectCount < arraySize)) {
+    while(size > 0 && ((arraySize == 0) || (objectCount < arraySize))) {
         // We're looking for hex 0x00 0x00 0x09 
         if((size >= 3) &&
            (buf[0] == 0x00 && buf[1] == 0x00 && buf[2] == 0x09)) {
@@ -201,6 +201,10 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
                     }
 
                     prop.property.object = new AMF0(buf, res);
+
+                    buf += res;
+                    size -= res;
+
                     res = prop.property.object->decode(buf, size, true);
 
                     buf += res;
@@ -520,7 +524,7 @@ int AMF0::encode(char* buf, int size)
                 throw "Not enough buffer to write key name";
             }
 
-            this->encodeInt16(kv.first.len, &buf[0]);
+            this->encodeInt16(kv.first.len, buf);
             memcpy(&buf[2], kv.first.val, kv.first.len);
             size -= 2+kv.first.len;
             buf += 2+kv.first.len;
