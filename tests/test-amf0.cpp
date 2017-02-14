@@ -4,6 +4,8 @@
  * Put the AMF0 portion of the library through its paces.
  *
  * TODO: Find or produce some binary data to decode with this.
+ * TODO: Make this actually nice instead of a lazy piece of
+ *       crap.  Sorry guys :)
  */
 
 #include <iostream>
@@ -244,6 +246,66 @@ int main(int argc, char** argv, char** envp)
     }
 
     // Compare!
+
+    // FIRST NUMBER: 1337
+    if(targetAMF.properties.propList->at(0).type != AMF0::Types::NUMBER) {
+        std::cout << "propList[0] not NUMBER, is type "
+                  << (int)targetAMF.properties.propList->at(0).type
+                  << std::endl;
+        return (int) -1;
+    }
+
+    if(targetAMF.properties.propList->at(0).property.number != 1337) {
+        std::cout << "propList[0] not 1337, is "
+                  << (int)targetAMF.properties.propList->at(0).property.number
+                  << std::endl;
+        return (int) -1;
+    }
+
+    // NEXT: Boolean false
+    if(targetAMF.properties.propList->at(1).type != AMF0::Types::BOOLEAN) {
+        std::cout << "propList[1] not BOOLEAN, is type "
+                  << (int)targetAMF.properties.propList->at(1).type
+                  << std::endl;
+        return (int) -1;
+    }
+
+    if(targetAMF.properties.propList->at(1).property.number != 0) {
+        std::cout << "propList[1] not 0, is "
+                  << (int)targetAMF.properties.propList->at(0).property.number
+                  << std::endl;
+        return (int) -1;
+    }
+
+    // NEXT: String "test"
+    if(targetAMF.properties.propList->at(2).type != AMF0::Types::STRING) {
+        std::cout << "propList[2] not STRING, is type "
+                  << (int)targetAMF.properties.propList->at(2).type
+                  << std::endl;
+        return (int) -1;
+    }
+
+    if((targetAMF.properties.propList->at(2).property.value.len != 4) ||
+       (strncmp(targetAMF.properties.propList->at(2).property.value.val,
+                 "test", 4))) {
+        std::cout << "propList[2] not test, is "
+                  << strndup(
+                    targetAMF.properties.propList->at(2).property.value.val,
+                    targetAMF.properties.propList->at(2).property.value.len)
+                  << std::endl;
+        return (int) -1;
+    }
+
+    // NEXT: Check pushed object.
+    if(targetAMF.properties.propList->at(3).type != AMF0::Types::OBJECT) {
+        std::cout << "propList[3] not OBJECT, is type "
+                  << (int)targetAMF.properties.propList->at(3).type
+                  << std::endl;
+        return (int) -1;
+    }
+
+    // Do the rest :)
+
 
     return (int) 0;
 }
