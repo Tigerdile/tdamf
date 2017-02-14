@@ -30,8 +30,9 @@ using namespace Tigerdile;
  * alloc as little memory as possible and to re-use th
  * buffer where available.
  *
- * A const char* will be thrown with an error message on
- * failure.
+ * Decode will throw an underflow_error if there is not
+ * enough data to decode, or a runtime_error if there
+ * is a problem.
  *
  * The third parameter, isMap, will indicate if we're expecting
  * to load a map with key value pairs or just a list of
@@ -83,13 +84,17 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
         if(isMap) {
             if(size < 4) {
                 // error
-                throw "isMap is true and size less than 4 bytes";
+                throw std::underflow_error(
+                    "isMap is true and size less than 4 bytes"
+                );
             }
 
 
             name.len = this->decodeInt16(buf);
             if(name.len > size - 2) {
-                throw "Got out-of-bounds name.len";
+                throw std::underflow_error(
+                    "Got out-of-bounds name.len"
+                );
             }
 
             size -= 2;
@@ -111,7 +116,9 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
         switch((Types)prop.type) {
             case Types::NUMBER: // a "double" - 8 bttes, IEEE-754
                 if(size < 8) {
-                    throw "Could not decode number - less than 8 bytes";
+                    throw std::underflow_error(
+                        "Could not decode number - less than 8 bytes"
+                    );
                 }
 
                 prop.property.number = this->decodeNumber(buf);
@@ -120,7 +127,9 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
                 break;
             case Types::BOOLEAN: // Single byte, true/false
                 if(size < 1) {
-                    throw "Could not decode boolean - less than 1 byte";
+                    throw std::underflow_error(
+                        "Could not decode boolean - less than 1 byte"
+                    );
                 }
 
                 prop.property.number = (*buf != 0);
@@ -129,7 +138,9 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
                 break;
             case Types::STRING: // "small" string, 2 bytes length then string.
                 if(size < 3) {
-                    throw "String requires at least 3 bytes in buffer.";
+                    throw std::underflow_error(
+                        "String requires at least 3 bytes in buffer."
+                    );
                 }
 
                 prop.property.value.len = this->decodeInt16(buf);
@@ -138,7 +149,9 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
                 size -= 2;
 
                 if(size < prop.property.value.len) {
-                    throw "Couldn't decode a string with not enough buffer";
+                    throw std::underflow_error(
+                        "Couldn't decode a string with not enough buffer"
+                    );
                 }
 
                 prop.property.value.val = buf;
@@ -149,7 +162,9 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
                 // This is an associative array.  It has a 4-byte count
                 // then otherwise is treated like an object.
                 if(size < 4) {
-                    throw "ECMA_ARRAY with not enough bytes";
+                    throw std::underflow_error(
+                        "ECMA_ARRAY with not enough bytes"
+                    );
                 }
 
                 // librtmp's implementation throws out the size.
@@ -188,7 +203,9 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
 
                     if(size < 2) {
                         // Minimum
-                        throw "TYPED_OBJECT without enough buffer for type str";
+                        throw std::underflow_error(
+                            "TYPED_OBJECT without enough buffer for type str"
+                        );
                     }
 
                     res = this->decodeInt16(buf);
@@ -197,7 +214,9 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
                     size -= 2;
 
                     if(size < res) {
-                        throw "TYPED_OBJECT without enough buffer to load name";
+                        throw std::underflow_error(
+                            "TYPED_OBJECT without enough buffer to load name"
+                        );
                     }
 
                     prop.property.object = new AMF0(buf, res);
@@ -249,7 +268,7 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
             case Types::RECORDSET:
                 // These are not supported -- Movieclip is a reserved type
                 // in AMF0 with no implementation, as is RECORDSET.
-                throw "Reserved/Unsupported type!";
+                throw std::runtime_error("Reserved/Unsupported type!");
             case Types::UNDEFINED:
             case Types::UNSUPPORTED:
                 // These two will be treated like null
@@ -260,7 +279,9 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
             case Types::STRICT_ARRAY:
                 // This is a numeric array.
                 if(size < 4) {
-                    throw "STRICT_ARRAY type with not enough bytes";
+                    throw std::underflow_error(
+                        "STRICT_ARRAY type with not enough bytes"
+                    );
                 }
                 {
                     int res;
@@ -304,7 +325,9 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
                  * @TODO : log it?  Care?  I dunno
                  */
                 if(size < 10) {
-                    throw "Got DATE type but not enough bytes";
+                    throw std::underflow_error(
+                        "Got DATE type but not enough bytes"
+                    );
                 }
 
                 prop.property.number = this->decodeNumber(buf);
@@ -319,7 +342,9 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
                 // These are identical types according to spec.
                 // This must be a least 4 bytes
                 if(size < 4) {
-                    throw "Not enough bytes to process LONG_STRING/XML_DOC";
+                    throw std::underflow_error(
+                        "Not enough bytes to process LONG_STRING/XML_DOC"
+                    );
                 }
 
                 prop.property.value.len = this->decodeInt32(buf);
@@ -328,7 +353,9 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
 
                 // do we have enough?
                 if(size < prop.property.value.len) {
-                    throw "Not enough bytes to load LONG_STRING/XML_DOC";
+                    throw std::underflow_error(
+                        "Not enough bytes to load LONG_STRING/XML_DOC"
+                    );
                 }
 
                 prop.property.value.val = buf;
@@ -350,7 +377,7 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
                 }
                 break;
             default:
-                throw "Unknown type received";
+                throw std::runtime_error("Unknown type received");
         }
 
         // Add it to our map or vector
@@ -427,7 +454,7 @@ size_t  AMF0::propertySize(const Property& prop)
 #           endif
         case Types::MOVIECLIP:
         case Types::RECORDSET:
-            throw "Reserved / unsupported type!";
+            throw std::runtime_error("Reserved / unsupported type!");
         case Types::UNDEFINED:
         case Types::UNSUPPORTED:
         case Types::NILL:
@@ -451,7 +478,7 @@ size_t  AMF0::propertySize(const Property& prop)
             LOG("LSTR:" << 5+prop.property.value.len);
             return 5+prop.property.value.len;
         default:
-            throw "Unknown type received";
+            throw std::runtime_error("Unknown type received");
     }
 }
 
@@ -521,7 +548,9 @@ int AMF0::encode(char* buf, int size)
         for(auto& kv: *this->properties.propMap) {
             // Encode name
             if(size < 3+kv.first.len) {
-                throw "Not enough buffer to write key name";
+                throw std::overflow_error(
+                    "Not enough buffer to write key name"
+                );
             }
 
             this->encodeInt16(kv.first.len, buf);
@@ -563,7 +592,9 @@ int AMF0::encodeProperty(char* buf, int size, const Property& prop)
             // We probably don't have a property of this type,
             // but we can encode it if we do!
             if(size < 3) {
-                throw "Not enough buffer room to write OBJECT_END.";
+                throw std::overflow_error(
+                    "Not enough buffer room to write OBJECT_END."
+                );
             }
 
             buf[0] = 0x00;
@@ -574,7 +605,9 @@ int AMF0::encodeProperty(char* buf, int size, const Property& prop)
         case Types::NUMBER:
             // Type byte + 8 byte double
             if(size < 9) {
-                throw "Not enough buffer to write NUMBER";
+                throw std::overflow_error(
+                    "Not enough buffer to write NUMBER"
+                );
             }
 
             buf[0] = prop.type;
@@ -584,7 +617,9 @@ int AMF0::encodeProperty(char* buf, int size, const Property& prop)
         case Types::BOOLEAN:
             // Type byte + 1 byte boolean
             if(size < 2) {
-                throw "Not enough buffer room to write BOOLEAN";
+                throw std::overflow_error(
+                    "Not enough buffer room to write BOOLEAN"
+                );
             }
 
             buf[0] = prop.type;
@@ -594,7 +629,9 @@ int AMF0::encodeProperty(char* buf, int size, const Property& prop)
         case Types::STRING:
             // Small string - type byte + 2 byte len + string
             if(size < 3+prop.property.value.len) {
-                throw "Not enough buffer to write STRING";
+                throw std::overflow_error(
+                    "Not enough buffer to write STRING"
+                );
             }
 
             buf[0] = prop.type;
@@ -605,7 +642,9 @@ int AMF0::encodeProperty(char* buf, int size, const Property& prop)
         case Types::ECMA_ARRAY:
             // This is identical to object, except it has a 4 byte header
             if(size < 5) {
-                throw "Not enough buffer to write ECMA_ARRAY";
+                throw std::overflow_error(
+                    "Not enough buffer to write ECMA_ARRAY"
+                );
             }
 
             buf[0] = prop.type;
@@ -619,7 +658,9 @@ int AMF0::encodeProperty(char* buf, int size, const Property& prop)
             if(!consumed) {
                 if(size < 1) {
                     // need 1 byte + length of name
-                    throw "Not enough buffer to write OBJECT/TYPED_OBJECT";
+                    throw std::overflow_error(
+                        "Not enough buffer to write OBJECT/TYPED_OBJECT"
+                    );
                 }
 
                 buf[0] = prop.type;
@@ -631,7 +672,9 @@ int AMF0::encodeProperty(char* buf, int size, const Property& prop)
                 if(prop.property.object->name.len) {
                     // check size
                     if((size - 1) < (2+prop.property.object->name.len)) {
-                        throw "Not enough buffer to write TYPED_OBJECT";
+                        throw std::overflow_error(
+                            "Not enough buffer to write TYPED_OBJECT"
+                        );
                     }
 
                     // write string
@@ -648,7 +691,9 @@ int AMF0::encodeProperty(char* buf, int size, const Property& prop)
 
             // Now add OBJECT_END
             if(size - consumed < 3) {
-                throw "Not enough buffer to write terminating OBJECT_END";
+                throw std::overflow_error(
+                    "Not enough buffer to write terminating OBJECT_END"
+                );
             }
 
             buf[consumed] = 0x00;
@@ -658,17 +703,19 @@ int AMF0::encodeProperty(char* buf, int size, const Property& prop)
             return consumed + 3;
         case Types::REFERENCE:
             // NOT implemented yet.
-            throw "REFERENCE not implemented yet";
+            throw std::runtime_error("REFERENCE not implemented yet");
             // return 3;
         case Types::MOVIECLIP:
         case Types::RECORDSET:
-            throw "Reserved / unsupported type!";
+            throw std::runtime_error("Reserved / unsupported type!");
         case Types::UNDEFINED:
         case Types::UNSUPPORTED:
         case Types::NILL:
             // These are just a type with no data
             if(size < 1) {
-                throw "Not enough buffer to write NULL type";
+                throw std::overflow_error(
+                    "Not enough buffer to write NULL type"
+                );
             }
 
             buf[0] = prop.type;
@@ -676,7 +723,9 @@ int AMF0::encodeProperty(char* buf, int size, const Property& prop)
         case Types::STRICT_ARRAY:
             // 4 byte size followed by elements
             if(size < 5) {
-                throw "Not enough buffer to write STRICT_ARRAY";
+                throw std::overflow_error(
+                    "Not enough buffer to write STRICT_ARRAY"
+                );
             }
 
             buf[0] = prop.type;
@@ -689,7 +738,9 @@ int AMF0::encodeProperty(char* buf, int size, const Property& prop)
             // NOTE: if we decided to implement TZ's, we need to implement
             // it here too.
             if(size < 11) {
-                throw "Not enough buffer to write DATE";
+                throw std::overflow_error(
+                    "Not enough buffer to write DATE"
+                );
             }
 
             buf[0] = prop.type;
@@ -703,7 +754,9 @@ int AMF0::encodeProperty(char* buf, int size, const Property& prop)
             // These are identical except for type byte
             // type bite + 4 byte len + string
             if(size < 5+prop.property.value.len) {
-                throw "Not enough buffer to write LONG_STRING/XML_DOC";
+                throw std::overflow_error(
+                    "Not enough buffer to write LONG_STRING/XML_DOC"
+                );
             }
 
             buf[0] = prop.type;
@@ -714,13 +767,15 @@ int AMF0::encodeProperty(char* buf, int size, const Property& prop)
         case Types::AVMPLUS:
             // Type byte followed by AMF03 encoding
             if(size < 1) {
-                throw "Not enough buffer to write AVMPLUS";
+                throw std::overflow_error(
+                    "Not enough buffer to write AVMPLUS"
+                );
             }
 
             buf[0] = prop.type;
             return 1+prop.property.object->encode(&buf[1], size-1);
         default:
-            throw "Unknown type received";
+            throw std::runtime_error("Unknown type received");
     }
 }
 

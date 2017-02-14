@@ -14,12 +14,7 @@
  *
  * TO DO:
  *
- * * ADD OPERATORS TO ACCESS MAP/VECTOR
- * * ADD ENCODER
- * * ADD EASY WAY TO ADD STUFF TO OBJECT.
- * * MAKE TESTS
- * * DO ALL THIS FOR AMF3
- * * PROPER EXCEPTIONS - out_of_buffer, return number of bytes needed
+ * * AMF3
  */
 
 #ifndef __AMF_HPP__
@@ -349,8 +344,9 @@ namespace Tigerdile
              * alloc as little memory as possible and to re-use th
              * buffer where available.
              *
-             * A const char* will be thrown with an error message on
-             * failure.
+             * Decode will throw an underflow_error if there is not
+             * enough data to decode, or a runtime_error if there
+             * is a problem.
              *
              * The third parameter, isMap, will indicate if we're expecting
              * to load a map with key value pairs or just a list of
@@ -477,8 +473,9 @@ namespace Tigerdile
              * alloc as little memory as possible and to re-use th
              * buffer where available.
              *
-             * A const char* will be thrown with an error message on
-             * failure.
+             * Decode will throw an underflow_error if there is not
+             * enough data to decode, or a runtime_error if there
+             * is a problem.
              *
              * The third parameter, isMap, will indicate if we're expecting
              * to load a map with key value pairs or just a list of
