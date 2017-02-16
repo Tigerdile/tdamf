@@ -1,5 +1,5 @@
 /*
- * amf.cpp
+ * amf0.cpp
  *
  * Source code for AMF library
  *

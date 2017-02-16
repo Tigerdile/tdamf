@@ -31,68 +31,8 @@
 
 #include <iostream>
 
+#include "endian.hpp"
 
-/*
- * Define byte order if not defined
- *
- * These #define's are totally cribbed from librtmp
- * Though I don't think there's a better way to do this.
- *
- * This is needed for converting double types.
- */
-#if defined(BYTE_ORDER) && !defined(__BYTE_ORDER)
-#   define __BYTE_ORDER    BYTE_ORDER
-#endif
-
-#if defined(BIG_ENDIAN) && !defined(__BIG_ENDIAN)
-#   define __BIG_ENDIAN    BIG_ENDIAN
-#endif
-
-#if defined(LITTLE_ENDIAN) && !defined(__LITTLE_ENDIAN)
-#   define __LITTLE_ENDIAN LITTLE_ENDIAN
-#endif
-
-/* define default endianness */
-#ifndef __LITTLE_ENDIAN
-#   define __LITTLE_ENDIAN    1234
-#endif
-
-#ifndef __BIG_ENDIAN
-#   define __BIG_ENDIAN    4321
-#endif
-
-#ifndef __BYTE_ORDER
-#   warning "Byte order not defined on your system, assuming little endian!"
-#   define __BYTE_ORDER    __LITTLE_ENDIAN
-#endif
-
-/* ok, we assume to have the same float word order and byte order
- * if float word order is not defined 
- */
-#ifndef __FLOAT_WORD_ORDER
-#   warning "Float word order not defined, assuming the same as byte order!"
-#   define __FLOAT_WORD_ORDER    __BYTE_ORDER
-#endif
-
-#if !defined(__BYTE_ORDER) || !defined(__FLOAT_WORD_ORDER)
-#   error "Undefined byte or float word order!"
-#endif
-
-#if __FLOAT_WORD_ORDER != __BIG_ENDIAN && __FLOAT_WORD_ORDER != __LITTLE_ENDIAN
-#   error "Unknown/unsupported float word order!"
-#endif
-
-#if __BYTE_ORDER != __BIG_ENDIAN && __BYTE_ORDER != __LITTLE_ENDIAN
-#   error "Unknown/unsupported byte order!"
-#endif
-
-// If we're debugging, let's add debugging commands
-#ifdef DEBUG
-#   include <iostream>
-#   define LOG(s)   std::cout << "DEBUG: " << s << std::endl
-#else
-#   define LOG(s)
-#endif
 
 namespace Tigerdile
 {
@@ -550,24 +490,103 @@ namespace Tigerdile
  * Version 3 of AMF
  *****************************************************************************/
 
-/*
     class AMF3 : public AMF
     {
         public:
-            enum Types : char { UNDEFINED = 0, NILL, FALSE, TRUE, INTEGER, DOUBLE, STRING,
-                                XML_DOC, DATE, ARRAY, OBJECT, XML, BYTE_ARRAY };
+            enum Types : char { UNDEFINED = 0, NILL, FALSE, TRUE, INTEGER,
+                                DOUBLE, STRING, XML_DOC, DATE, ARRAY, OBJECT,
+                                XML, BYTE_ARRAY, VECTOR_INT, VECTOR_UINT,
+                                VECTOR_DOUBLE, VECTOR_OBJECT, DICTIONARY };
+
+            /*
+             * Constructor to initialize 'name'.  'name' is used by
+             * AMF TypedObjects.
+             */
+            AMF3(const char* name = NULL, uint32_t nameSize = 0)
+            {
+                this->name.val = name;
+                this->name.len = nameSize;
+            }
+
+            /*
+             * This will process some buffer of data and load it into
+             * this AMF object.
+             *
+             * Note that the buffer is NOT! owned by the AMF object,
+             * but WILL be used by it.  The goal of this class is to
+             * alloc as little memory as possible and to re-use th
+             * buffer where available.
+             *
+             * Decode will throw an underflow_error if there is not
+             * enough data to decode, or a runtime_error if there
+             * is a problem.
+             *
+             * The third parameter, isMap, will indicate if we're expecting
+             * to load a map with key value pairs or just a list of
+             * something.
+             *
+             * The fourth parameter, if non-zero AND isMap is false,
+             * will be used as a hard limit of how many records
+             * we will process -- basically that's to support AMF's
+             * "strict array" type.
+             *
+             * Returns the number of bytes consumed from the buffer.
+             */
+            int decode(const char* buf, int size, bool isMap = false,
+                       uint32_t arraySize = 0);
+
+            /*
+             * Return size of buffer required to encode this object.
+             * How this buffer is alloc'd is up to the caller.  The
+             * resulting buffer will not be larger than this.
+             *
+             * It iterates over all items and child items, so therefore
+             * this is a potentially expensive call.
+             */
+            size_t  encodedSize();
+
+            /*
+             * Method to produce a size (in bytes) to encode a given
+             * Property.
+             */
+            size_t  propertySize(const Property& prop);
+
+            /*
+             * This encodes the object into an AMF data stream suitable
+             * for transmission or storage to file system.
+             *
+             * Requires a buffer that we will write to, with a size
+             * parameter to say how much buffer is provided.  It will
+             * return how many bytes of that buffer we actually consumed.
+             *
+             * You can use the "encodedSize" call to figure out the
+             * minimum buffer size required to encode an object.
+             * IMPLEMENTATION NOTE: The top level AMF0 object has no
+             * type; it should be treated like a list.  encodeProperty
+             * will use this method, but it will add the window dressing
+             * (any pre-amble or post-amble bytes).
+             *
+             * The point is, only call this on a top-level AMF0 object.
+             */
+            int encode(char* buf, int size);
+
+            /*
+             * This encodes an individual AMF property into the provided
+             * buffer.  The buffer must be large enough to handle it.
+             *
+             * You will usually use encode to encode a whole AMF
+             * message, but if you need to encode some small part of
+             * an AMF message, you can use this instead.
+             *
+             * Returns number of bytes consumed.
+             */
+            int encodeProperty(char* buf, int size, const Property& prop);
+
+            /*
+             * Clean out properties
+             */
+            ~AMF3();
     };
- */
-
-/*****************************************************************************
- * Exceptions
- *
- * These are exceptions that can be thrown by the AMF library.  We will
- * try to throw helpful exceptions that give enough information to diagnose
- * a potential problem.
- *****************************************************************************/
-
-
 }
 
 
