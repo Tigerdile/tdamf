@@ -45,8 +45,7 @@ using namespace Tigerdile;
  *
  * Returns the number of bytes consumed from the buffer.
  */
-int AMF3::decode(const char* buf, int size, bool isMap,
-                 uint32_t arraySize)
+uint32_t AMF3::decode(const char* buf, uint32_t size)
 {
     return 0;
 }
@@ -59,7 +58,7 @@ int AMF3::decode(const char* buf, int size, bool isMap,
  * It iterates over all items and child items, so therefore
  * this is a potentially expensive call.
  */
-size_t  AMF3::encodedSize()
+uint32_t  AMF3::encodedSize()
 {
     return 0;
 }
@@ -68,7 +67,7 @@ size_t  AMF3::encodedSize()
  * Method to produce a size (in bytes) to encode a given
  * Property.
  */
-size_t  AMF3::propertySize(const Property& prop)
+uint32_t  AMF3::propertySize(const Property& prop)
 {
     return 0;
 }
@@ -90,26 +89,10 @@ size_t  AMF3::propertySize(const Property& prop)
  *
  * The point is, only call this on a top-level AMF0 object.
  */
-int AMF3::encode(char* buf, int size)
+uint32_t AMF3::encode(char* buf, uint32_t size)
 {
     return 0;
 }
-
-/*
- * This encodes an individual AMF property into the provided
- * buffer.  The buffer must be large enough to handle it.
- *
- * You will usually use encode to encode a whole AMF
- * message, but if you need to encode some small part of
- * an AMF message, you can use this instead.
- *
- * Returns number of bytes consumed.
- */
-int AMF3::encodeProperty(char* buf, int size, const Property& prop)
-{
-    return 0;
-}
-
 
 /*
  * AMF3 destructor to clean out properties that use objects.

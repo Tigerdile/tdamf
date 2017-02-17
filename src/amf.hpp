@@ -288,19 +288,9 @@ namespace Tigerdile
              * enough data to decode, or a runtime_error if there
              * is a problem.
              *
-             * The third parameter, isMap, will indicate if we're expecting
-             * to load a map with key value pairs or just a list of
-             * something.
-             *
-             * The fourth parameter, if non-zero AND isMap is false,
-             * will be used as a hard limit of how many records
-             * we will process -- basically that's to support AMF's
-             * "strict array" type.
-             *
              * Returns the number of bytes consumed from the buffer.
              */
-            virtual int decode(const char* buf, int size, bool isMap = false,
-                               uint32_t arraySize = 0)
+            virtual uint32_t decode(const char* buf, uint32_t size)
             {
                 throw std::runtime_error("Needs definition");
             }
@@ -312,8 +302,13 @@ namespace Tigerdile
              *
              * It iterates over all items and child items, so therefore
              * this is a potentially expensive call.
+             *
+             * This method will not necessarily take into account
+             * compression due to use of references, so the resulting
+             * buffer used could be smaller than this size, but will
+             * never be larger.
              */
-            virtual size_t  encodedSize()
+            virtual uint32_t  encodedSize()
             {
                 throw std::runtime_error("Needs definition");
             }
@@ -324,7 +319,7 @@ namespace Tigerdile
              * on those objects.  encodedSize, in turn, calls this to
              * size its component properties.
              */
-            virtual size_t  propertySize(const Property& prop)
+            virtual uint32_t  propertySize(const Property& prop)
             {
                 throw std::runtime_error("Needs definition");
             }
@@ -340,23 +335,7 @@ namespace Tigerdile
              * You can use the "encodedSize" call to figure out the
              * minimum buffer size required to encode an object.
              */
-            virtual int encode(char* buf, int size)
-            {
-                throw std::runtime_error("Needs definition");
-            }
-
-            /*
-             * This encodes an individual AMF property into the provided
-             * buffer.  The buffer must be large enough to handle it.
-             *
-             * You will usually use encode to encode a whole AMF
-             * message, but if you need to encode some small part of
-             * an AMF message, you can use this instead.
-             *
-             * Returns number of bytes consumed.
-             */
-            virtual int encodeProperty(char* buf, int size,
-                                       const Property& prop)
+            virtual uint32_t encode(char* buf, uint32_t size)
             {
                 throw std::runtime_error("Needs definition");
             }
@@ -422,7 +401,7 @@ namespace Tigerdile
              *
              * Returns the number of bytes consumed from the buffer.
              */
-            int decode(const char* buf, int size);
+            uint32_t decode(const char* buf, uint32_t size);
 
             /*
              * Return size of buffer required to encode this object.
@@ -431,14 +410,17 @@ namespace Tigerdile
              *
              * It iterates over all items and child items, so therefore
              * this is a potentially expensive call.
+             *
+             * Currently, this does not take into account references
+             * @TODO: Take into account references
              */
-            size_t  encodedSize();
+            uint32_t  encodedSize();
 
             /*
              * Method to produce a size (in bytes) to encode a given
              * Property.
              */
-            size_t  propertySize(const Property& prop);
+            uint32_t  propertySize(const Property& prop);
 
             /*
              * This encodes the object into an AMF data stream suitable
@@ -457,26 +439,14 @@ namespace Tigerdile
              *
              * The point is, only call this on a top-level AMF0 object.
              */
-            int encode(char* buf, int size);
-
-            /*
-             * This encodes an individual AMF property into the provided
-             * buffer.  The buffer must be large enough to handle it.
-             *
-             * You will usually use encode to encode a whole AMF
-             * message, but if you need to encode some small part of
-             * an AMF message, you can use this instead.
-             *
-             * Returns number of bytes consumed.
-             */
-            int encodeProperty(char* buf, int size, const Property& prop);
+            uint32_t encode(char* buf, uint32_t size);
 
             /*
              * Clean out properties
              */
             ~AMF0();
 
-        protected:
+        private:
             /*
              * These decoders/encoders are protected because they won't work
              * right without the reference object.
@@ -492,9 +462,40 @@ namespace Tigerdile
              *
              * Returns number of bytes consumsed from the buffer.
              */
-            int decodeObject(const char* buf, int size, bool isMap,
-                             std::vector<Property>& references,
-                             uint32_t arraySize = 0);
+            uint32_t decodeObject(const char* buf, uint32_t size, bool isMap,
+                                  std::vector<Property>& references,
+                                  uint32_t arraySize = 0);
+
+            /*
+             * This encodes an individual AMF property into the provided
+             * buffer.  The buffer must be large enough to handle it.
+             *
+             * You will usually use encode to encode a whole AMF
+             * message, but if you need to encode some small part of
+             * an AMF message, you can use this instead.
+             *
+             * Returns number of bytes consumed.
+             */
+            uint32_t encodeProperty(char* buf, uint32_t size, const Property& prop,
+                                    std::map<AMF*, uint32_t>& references,
+                                    uint32_t& refCounter);
+
+            /*
+             * This encodes the object into an AMF data stream suitable
+             * for transmission or storage to file system.
+             *
+             * Requires a buffer that we will write to, with a size
+             * parameter to say how much buffer is provided.  It will
+             * return how many bytes of that buffer we actually consumed.
+             *
+             * THIS MUST be called by encodeProperty unless its called
+             * on the top level object.  Generally speaking, this
+             * method shouldn't be used by anyone.
+             */
+            uint32_t encodeObject(char* buf, uint32_t size,
+                                  std::map<AMF*, uint32_t>& references,
+                                  uint32_t& refCounter);
+
     };
 
 /*****************************************************************************
@@ -545,8 +546,7 @@ namespace Tigerdile
              *
              * Returns the number of bytes consumed from the buffer.
              */
-            int decode(const char* buf, int size, bool isMap = false,
-                       uint32_t arraySize = 0);
+            uint32_t decode(const char* buf, uint32_t size);
 
             /*
              * Return size of buffer required to encode this object.
@@ -556,13 +556,13 @@ namespace Tigerdile
              * It iterates over all items and child items, so therefore
              * this is a potentially expensive call.
              */
-            size_t  encodedSize();
+            uint32_t  encodedSize();
 
             /*
              * Method to produce a size (in bytes) to encode a given
              * Property.
              */
-            size_t  propertySize(const Property& prop);
+            uint32_t  propertySize(const Property& prop);
 
             /*
              * This encodes the object into an AMF data stream suitable
@@ -581,19 +581,7 @@ namespace Tigerdile
              *
              * The point is, only call this on a top-level AMF0 object.
              */
-            int encode(char* buf, int size);
-
-            /*
-             * This encodes an individual AMF property into the provided
-             * buffer.  The buffer must be large enough to handle it.
-             *
-             * You will usually use encode to encode a whole AMF
-             * message, but if you need to encode some small part of
-             * an AMF message, you can use this instead.
-             *
-             * Returns number of bytes consumed.
-             */
-            int encodeProperty(char* buf, int size, const Property& prop);
+            uint32_t encode(char* buf, uint32_t size);
 
             /*
              * Clean out properties

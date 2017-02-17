@@ -34,7 +34,7 @@ using namespace Tigerdile;
  * enough data to decode, or a runtime_error if there
  * is a problem.
  */
-int AMF0::decode(const char* buf, int size)
+uint32_t AMF0::decode(const char* buf, uint32_t size)
 {
     // Keep our references ready
     std::vector<Property>   references;
@@ -48,13 +48,14 @@ int AMF0::decode(const char* buf, int size)
  *
  * Returns number of bytes consumsed from the buffer.
  */
-int AMF0::decodeObject(const char* buf, int size, bool isMap,
-                       std::vector<Property>& references, uint32_t arraySize)
+uint32_t AMF0::decodeObject(const char* buf, uint32_t size, bool isMap,
+                            std::vector<Property>& references,
+                            uint32_t arraySize)
 {
     Value name;
     Property prop;
-    int originalSize = size;
-    int objectCount = 0;
+    uint32_t originalSize = size;
+    uint32_t objectCount = 0;
 
 #   ifdef DEBUG
         if(isMap){
@@ -180,7 +181,7 @@ int AMF0::decodeObject(const char* buf, int size, bool isMap,
                 buf += 4;
             case Types::OBJECT: // This will be a "map" basically.
                 {
-                    int res;
+                    uint32_t res;
 
                     prop.property.object = new AMF0();
                     res = ((AMF0*)prop.property.object)
@@ -207,7 +208,7 @@ int AMF0::decodeObject(const char* buf, int size, bool isMap,
                  * object.
                  */
                 {
-                    int res;
+                    uint32_t res;
 
                     if(size < 2) {
                         // Minimum
@@ -293,7 +294,7 @@ int AMF0::decodeObject(const char* buf, int size, bool isMap,
                     );
                 }
                 {
-                    int res;
+                    uint32_t res;
 
                     // use arrayCount instead of arraySize to support
                     // nested arrays.  Be careful!
@@ -379,7 +380,7 @@ int AMF0::decodeObject(const char* buf, int size, bool isMap,
             case Types::AVMPLUS:
                 // Swap to AMF3 decoder.
                 {
-                    int res = 0;
+                    uint32_t res = 0;
 
                     // This won't compile yet.
                     //prop.property.object = new AMF3();
@@ -414,7 +415,7 @@ int AMF0::decodeObject(const char* buf, int size, bool isMap,
  * Method to produce a size (in bytes) to encode a given
  * Property.  Note 'type' field always adds 1 byte
  */
-size_t  AMF0::propertySize(const Property& prop)
+uint32_t  AMF0::propertySize(const Property& prop)
 {
     switch(prop.type) {
         case Types::OBJECT_END:
@@ -432,7 +433,7 @@ size_t  AMF0::propertySize(const Property& prop)
         case Types::ECMA_ARRAY:
 #           ifdef DEBUG
                 {
-                    int encSize = 5+prop.property.object->encodedSize();
+                    uint32_t encSize = 5+prop.property.object->encodedSize();
                     LOG("EARR: " << encSize);
                     return encSize;
                 }
@@ -443,7 +444,7 @@ size_t  AMF0::propertySize(const Property& prop)
         case Types::OBJECT:
 #           ifdef DEBUG
                 {
-                    int encSize = 1+prop.property.object->encodedSize();
+                    uint32_t encSize = 1+prop.property.object->encodedSize();
                     LOG("AOBJ: " << encSize);
                     return encSize;
                 }
@@ -456,8 +457,8 @@ size_t  AMF0::propertySize(const Property& prop)
         case Types::TYPED_OBJECT:
 #           ifdef DEBUG
                 {
-                    int encSize = 3+prop.property.object->name.len
-                                  +prop.property.object->encodedSize();
+                    uint32_t encSize = 3+prop.property.object->name.len
+                                       +prop.property.object->encodedSize();
                     LOG("TOBJ: " << encSize);
                     return encSize;
                 }
@@ -476,7 +477,7 @@ size_t  AMF0::propertySize(const Property& prop)
         case Types::STRICT_ARRAY:
 #           ifdef DEBUG
                 {
-                    int encSize = 5+prop.property.object->encodedSize();
+                    uint32_t encSize = 5+prop.property.object->encodedSize();
                     LOG("SARR: " << encSize);
                     return encSize;
                 }
@@ -504,7 +505,7 @@ size_t  AMF0::propertySize(const Property& prop)
  * It iterates over all items and child items, so therefore
  * this is a potentially expensive call
  */
-size_t AMF0::encodedSize()
+uint32_t AMF0::encodedSize()
 {
     size_t result = 0;
 
@@ -551,10 +552,33 @@ size_t AMF0::encodedSize()
  *
  * The point is, only call this on a top-level AMF0 object.
  */
-int AMF0::encode(char* buf, int size)
+uint32_t AMF0::encode(char* buf, uint32_t size)
 {
-    int consumed;
-    int originalSize = size;
+    std::map<AMF*, uint32_t>    references;
+    uint32_t                    counter;
+
+    return this->encodeObject(buf, size, references, counter);
+}
+
+
+/*
+ * This encodes the object into an AMF data stream suitable
+ * for transmission or storage to file system.
+ *
+ * Requires a buffer that we will write to, with a size
+ * parameter to say how much buffer is provided.  It will
+ * return how many bytes of that buffer we actually consumed.
+ *
+ * THIS MUST be called by encodeProperty unless its called
+ * on the top level object.  Generally speaking, this
+ * method shouldn't be used by anyone.
+ */
+uint32_t AMF0::encodeObject(char* buf, uint32_t size,
+                            std::map<AMF*, uint32_t>& references,
+                            uint32_t& counter)
+{
+    uint32_t consumed;
+    uint32_t originalSize = size;
 
     // How we iterate depends on isMap
     if(this->isMap) {
@@ -571,13 +595,15 @@ int AMF0::encode(char* buf, int size)
             size -= 2+kv.first.len;
             buf += 2+kv.first.len;
 
-            consumed = this->encodeProperty(buf, size, kv.second);
+            consumed = this->encodeProperty(buf, size, kv.second, references,
+                                            counter);
             size -= consumed;
             buf += consumed;
         }
     } else {
         for(const Property& prop: *this->properties.propList) {
-            consumed = this->encodeProperty(buf, size, prop);
+            consumed = this->encodeProperty(buf, size, prop, references,
+                                            counter);
             size -= consumed;
             buf += consumed;
         }
@@ -596,9 +622,11 @@ int AMF0::encode(char* buf, int size)
  *
  * Returns number of bytes consumed.
  */
-int AMF0::encodeProperty(char* buf, int size, const Property& prop)
+uint32_t AMF0::encodeProperty(char* buf, uint32_t size, const Property& prop,
+                              std::map<AMF*, uint32_t>& references,
+                              uint32_t& counter)
 {
-    int consumed = 0; // used in a few places.
+    uint32_t consumed = 0; // used in a few places.
 
     switch(prop.type) {
         case Types::OBJECT_END:
@@ -667,6 +695,20 @@ int AMF0::encodeProperty(char* buf, int size, const Property& prop)
             consumed = 5;
         case Types::TYPED_OBJECT:
         case Types::OBJECT:
+            // Are we doing a reference?
+            {
+                const auto& search = references.find(prop.property.object);
+
+                if(search != references.end()) {
+                    Property tmp;
+                    tmp.type = Types::REFERENCE;
+                    tmp.property.value.len = search->second;
+
+                    return this->encodeProperty(buf, size, tmp, references,
+                                                counter);
+                }
+            }
+
             // We may have fallen through from ECMA_Array.  if consumed > 0
             if(!consumed) {
                 if(size < 1) {
@@ -713,11 +755,23 @@ int AMF0::encodeProperty(char* buf, int size, const Property& prop)
             buf[consumed+1] = 0x00;
             buf[consumed+2] = 0x09;
 
+            // Add to reference
+            references.insert({prop.property.object, counter});
+            counter++;
+
             return consumed + 3;
         case Types::REFERENCE:
-            // NOT implemented yet.
-            throw std::runtime_error("REFERENCE not implemented yet");
-            // return 3;
+            // This shouldn't be used by anyone directly.
+            if(size < 3) {
+                throw std::overflow_error(
+                    "Not enough buffer to encode a REFERENCE"
+                );
+            }
+
+            buf[0] = Types::REFERENCE;
+            this->encodeInt16(prop.property.value.len, &buf[1]);
+
+            return 3;
         case Types::MOVIECLIP:
         case Types::RECORDSET:
             throw std::runtime_error("Reserved / unsupported type!");
@@ -734,6 +788,20 @@ int AMF0::encodeProperty(char* buf, int size, const Property& prop)
             buf[0] = prop.type;
             return 1;
         case Types::STRICT_ARRAY:
+            // Are we doing a reference?
+            {
+                const auto& search = references.find(prop.property.object);
+
+                if(search != references.end()) {
+                    Property tmp;
+                    tmp.type = Types::REFERENCE;
+                    tmp.property.value.len = search->second;
+
+                    return this->encodeProperty(buf, size, tmp, references,
+                                                counter);
+                }
+            }
+
             // 4 byte size followed by elements
             if(size < 5) {
                 throw std::overflow_error(
@@ -744,6 +812,10 @@ int AMF0::encodeProperty(char* buf, int size, const Property& prop)
             buf[0] = prop.type;
             this->encodeInt32(prop.property.object->properties.propList->size(),
                               &buf[1]);
+
+            // Add to reference
+            references.insert({prop.property.object, counter});
+            counter++;
 
             return 5+prop.property.object->encode(&buf[5], size-5);
         case Types::DATE:
