@@ -33,19 +33,23 @@ using namespace Tigerdile;
  * Decode will throw an underflow_error if there is not
  * enough data to decode, or a runtime_error if there
  * is a problem.
- *
- * The third parameter, isMap, will indicate if we're expecting
- * to load a map with key value pairs or just a list of
- * something.
- *
- * The fourth parameter, if non-zero AND isMap is false,
- * will be used as a hard limit of how many records
- * we will process -- basically that's to support AMF's
- * "strict array" type.
- *
- * Returns the number of bytes consumed from the buffer.
  */
-int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
+int AMF0::decode(const char* buf, int size)
+{
+    // Keep our references ready
+    std::vector<Property>   references;
+
+    return this->decodeObject(buf, size, false, references, 0);
+}
+
+/*
+ * Decode an object or list.  This will loop a call on
+ * decodeProperty over its elements as needed.
+ *
+ * Returns number of bytes consumsed from the buffer.
+ */
+int AMF0::decodeObject(const char* buf, int size, bool isMap,
+                       std::vector<Property>& references, uint32_t arraySize)
 {
     Value name;
     Property prop;
@@ -179,11 +183,15 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
                     int res;
 
                     prop.property.object = new AMF0();
-                    res = prop.property.object->decode(buf, size, true);
+                    res = ((AMF0*)prop.property.object)
+                                ->decodeObject(buf, size, true, references);
 
                     buf += res;
                     size -= res;
                 }
+
+                // add to references
+                references.push_back(prop);
 
                 break;
             case Types::TYPED_OBJECT:
@@ -224,11 +232,15 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
                     buf += res;
                     size -= res;
 
-                    res = prop.property.object->decode(buf, size, true);
+                    res = ((AMF0*)prop.property.object)->
+                                    decodeObject(buf, size, true, references);
 
                     buf += res;
                     size -= res;
                 }
+
+                // add to references
+                references.push_back(prop);
 
                 break;
             case Types::REFERENCE:
@@ -242,28 +254,21 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
                  * to an index in a table of previously serialized objects.
                  * Indices start at 0.
                  *
-                 * This seems like an unpopular thing to implement so I
-                 * am leaving this @TODO
-                 *
-                 * The specs aren't clear as to how a reference is initially
-                 * defined .. "index of previously serialized objects" ?
-                 * Is this something I'm supposed to maintain automatically?
-                 * If so, that's pretty easy.  I'd like to see an example
-                 * of this ... if there's ever any need for this feature,
-                 * I will dig into it more.
-                 *
-                 * UPDATE: Yeah, it looks like I should be automatically
-                 * keeping a reference array of all things that are considered
-                 * complex objects.
-                 *
-                 * This is a 16-bit (2 byte) unsigned integer for a max of
-                 * 65,535 complex types.
-                 *
-                 * MOAR info, from AMF3 spec
-                 * Similar to AMF 0, AMF 3 object reference tables, object trait
-                 * reference tables and string reference tables must be reset
-                 * each time a new context header or message is processed.
+                 * AMF3 requires referenecs so I implemented them in AMF0
+                 * despite not having any real guidance from another
+                 * library or data source.  I wouldn't be surprised if
+                 * I got this a little wrong, but, hey, I'm trying :)
                  */
+                if(size < 2) {
+                    throw std::underflow_error(
+                        "Could not decode reference -- less than 2 bytes"
+                    );
+                }
+
+                prop = references.at(this->decodeInt16(buf));
+                buf += 2;
+                size -= 2;
+                break;
             case Types::MOVIECLIP:
             case Types::RECORDSET:
                 // These are not supported -- Movieclip is a reserved type
@@ -293,12 +298,16 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
                     size -= 4;
 
                     prop.property.object = new AMF0();
-                    res = prop.property.object->decode(buf, size, false,
-                                                      arrayCount);
+                    res = ((AMF0*)prop.property.object)->
+                            decodeObject(buf, size, false, references,
+                                         arrayCount);
 
                     buf += res;
                     size -= res;
                 }
+
+                // add to references
+                references.push_back(prop);
 
                 break;
             case Types::DATE:
@@ -370,7 +379,7 @@ int AMF0::decode(const char* buf, int size, bool isMap, uint32_t arraySize)
 
                     // This won't compile yet.
                     //prop.property.object = new AMF3();
-                    //res = prop.property.object->decode(buf, size, true);
+                    //res = prop.property.object->decode(buf, size);
 
                     buf += res;
                     size -= res;
@@ -792,7 +801,16 @@ AMF0::~AMF0()
                 case Types::OBJECT:
                 case Types::ECMA_ARRAY:
                 case Types::STRICT_ARRAY:
+                    if(((AMF0*)kv.second.property.object)->refCount) {
+                        ((AMF0*)kv.second.property.object)->refCount--;
+                    } else {
+                        delete kv.second.property.object;
+                    }
+
+                    break;
                 case Types::AVMPLUS:
+                    // Don't count references for AVM Plus, but still needs
+                    // de-alloc
                     delete kv.second.property.object;
                 default: // avoids warning
                     break;
@@ -807,7 +825,11 @@ AMF0::~AMF0()
                 case Types::ECMA_ARRAY:
                 case Types::STRICT_ARRAY:
                 case Types::AVMPLUS:
-                    delete prop.property.object;
+                    if(((AMF0*)prop.property.object)->refCount) {
+                        ((AMF0*)prop.property.object)->refCount--;
+                    } else {
+                        delete prop.property.object;
+                    }
                 default: // avoids warning
                     break;
             }

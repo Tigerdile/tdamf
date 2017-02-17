@@ -417,19 +417,12 @@ namespace Tigerdile
              * enough data to decode, or a runtime_error if there
              * is a problem.
              *
-             * The third parameter, isMap, will indicate if we're expecting
-             * to load a map with key value pairs or just a list of
-             * something.
-             *
-             * The fourth parameter, if non-zero AND isMap is false,
-             * will be used as a hard limit of how many records
-             * we will process -- basically that's to support AMF's
-             * "strict array" type.
+             * This is the top level decode and will loop over
+             * decodeProperty / decodeObject as necessary.
              *
              * Returns the number of bytes consumed from the buffer.
              */
-            int decode(const char* buf, int size, bool isMap = false,
-                       uint32_t arraySize = 0);
+            int decode(const char* buf, int size);
 
             /*
              * Return size of buffer required to encode this object.
@@ -482,6 +475,26 @@ namespace Tigerdile
              * Clean out properties
              */
             ~AMF0();
+
+        protected:
+            /*
+             * These decoders/encoders are protected because they won't work
+             * right without the reference object.
+             */
+
+            uint32_t    refCount = 0;   // How many references we have.
+                                        // If this is > 0, we should
+                                        // not free it yet.
+
+            /*
+             * Decode an object or list.  This will loop a call on
+             * decodeProperty over its elements as needed.
+             *
+             * Returns number of bytes consumsed from the buffer.
+             */
+            int decodeObject(const char* buf, int size, bool isMap,
+                             std::vector<Property>& references,
+                             uint32_t arraySize = 0);
     };
 
 /*****************************************************************************
