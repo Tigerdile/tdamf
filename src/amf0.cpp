@@ -266,6 +266,10 @@ int AMF0::decodeObject(const char* buf, int size, bool isMap,
                 }
 
                 prop = references.at(this->decodeInt16(buf));
+
+                // add to reference count
+                ((AMF0*)prop.property.object)->refCount++;
+
                 buf += 2;
                 size -= 2;
                 break;
