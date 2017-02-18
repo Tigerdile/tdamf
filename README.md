@@ -1,6 +1,8 @@
 # tdamf
 Tigerdile's AMF0 and AMF3 (Adobe Message Format) Library for C++ 11 that just uses standard C++ libraries without external dependencies.
 
+This is, possibly, the only open-source C++ library that has a complete implementation of AMF0 including typed objects and references (which are missing from most).
+
 # WHY?
 There are a handful of AMF libraries for C / C++.  Most are for interpreted languages such as PHP.  The ones for C / C++ are all of fairly low code quality with sparce documentation.  For a larger project, I made my own, and I tried to make it clean and well documented.
 
