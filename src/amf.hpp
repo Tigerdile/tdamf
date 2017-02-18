@@ -628,7 +628,7 @@ namespace Tigerdile
             /*
              * Shortcut for handling the type
              */
-            inline uint32_t decodeInt20(const char* buf, uint32_t& size)
+            inline uint32_t decodeInt29(const char* buf, uint32_t& size)
             {
                 return this->decodeInt29((const unsigned char*)buf, size);
             }
