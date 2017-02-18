@@ -587,6 +587,51 @@ namespace Tigerdile
              * Clean out properties
              */
             ~AMF3();
+
+        private:
+            /*
+             * Decode an AMF3 freak 29-bit integer.
+             *
+             * This can have a reference bit (for string decoding)
+             * Returns the value of the AMF3 integer, and if provided,
+             * will put the reference bit in the provided second parameter.
+             *
+             * We won't know ahead of time how many bytes are going to
+             * be consumed, so we need a size parameter that we will
+             * decriment with whatever we consumed.
+             */
+            inline uint32_t decodeInt29(const unsigned char* buf,
+                                        uint32_t& size)
+            {
+                if(size && buf[0] < 0x80) {
+                    size--;
+                    return buf[0];
+                } else if((size > 1) && (buf[1] < 0x80)) {
+                    size -= 2;
+                    return ((buf[0] & 0x7F) << 7) | buf[1];
+                } else if((size > 2) && (buf[2] < 0x80)) {
+                    size -= 3;
+                    return ((buf[0] & 0x7F) << 14) |
+                           ((buf[1] & 0x7F) << 7) | buf[2];
+                } else if(size > 3) {
+                    size -= 4;
+                    return ((buf[0] & 0x7F) << 22) |
+                           ((buf[1] & 0x7F) << 15) |
+                           ((buf[2] & 0x7F) << 8) | buf[3];
+                } else {
+                    throw std::underflow_error(
+                        "Not enough bytes to decode Int29"
+                    );
+                }
+            }
+
+            /*
+             * Shortcut for handling the type
+             */
+            inline uint32_t decodeInt20(const char* buf, uint32_t& size)
+            {
+                return this->decodeInt29((const unsigned char*)buf, size);
+            }
     };
 }
 
