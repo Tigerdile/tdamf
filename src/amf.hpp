@@ -626,12 +626,18 @@ namespace Tigerdile
             }
 
             /*
-             * Shortcut for handling the type
+             * Shortcut for handling the type -- our buf is usually not
+             * const char but must be for bit manipulation.
              */
             inline uint32_t decodeInt29(const char* buf, uint32_t& size)
             {
                 return this->decodeInt29((const unsigned char*)buf, size);
             }
+
+            uint32_t    refCount = 0;   // How many references we have.
+                                        // If this is > 0, we should
+                                        // not free it yet.
+
     };
 }
 

@@ -382,12 +382,16 @@ uint32_t AMF0::decodeObject(const char* buf, uint32_t size, bool isMap,
                 {
                     uint32_t res = 0;
 
-                    // This won't compile yet.
-                    //prop.property.object = new AMF3();
-                    //res = prop.property.object->decode(buf, size);
+                    prop.property.object = new AMF3();
+                    res = prop.property.object->decode(buf, size);
 
                     buf += res;
                     size -= res;
+
+                    // @TODO: I think once in AVMPLUS mode we're
+                    // always in AMF3 from here on out -- verify.
+                    // Maybe get mad if buffer isn't empty ?
+                    // or force an abort out of decode?
                 }
                 break;
             default:
@@ -858,6 +862,9 @@ uint32_t AMF0::encodeProperty(char* buf, uint32_t size, const Property& prop,
             }
 
             buf[0] = prop.type;
+
+            // After switching to AVMPLUS, we probably can't encode
+            // more stuff in AMF0 -- @TODO enforce this ?
             return 1+prop.property.object->encode(&buf[1], size-1);
         default:
             throw std::runtime_error("Unknown type received");
@@ -900,12 +907,14 @@ AMF0::~AMF0()
                 case Types::OBJECT:
                 case Types::ECMA_ARRAY:
                 case Types::STRICT_ARRAY:
-                case Types::AVMPLUS:
                     if(((AMF0*)prop.property.object)->refCount) {
                         ((AMF0*)prop.property.object)->refCount--;
                     } else {
                         delete prop.property.object;
                     }
+                    break;
+                case Types::AVMPLUS:
+                    delete kv.second.property.object;
                 default: // avoids warning
                     break;
             }

@@ -34,19 +34,15 @@ using namespace Tigerdile;
  * enough data to decode, or a runtime_error if there
  * is a problem.
  *
- * The third parameter, isMap, will indicate if we're expecting
- * to load a map with key value pairs or just a list of
- * something.
- *
- * The fourth parameter, if non-zero AND isMap is false,
- * will be used as a hard limit of how many records
- * we will process -- basically that's to support AMF's
- * "strict array" type.
- *
  * Returns the number of bytes consumed from the buffer.
  */
 uint32_t AMF3::decode(const char* buf, uint32_t size)
 {
+    // We need our reference tables.
+    std::vector<Property>       objectRefs;
+    std::vector<Value>          stringRefs;
+    std::vector<
+
     return 0;
 }
 
@@ -110,7 +106,11 @@ AMF3::~AMF3()
                 case Types::VECTOR_DOUBLE:
                 case Types::VECTOR_OBJECT:
                 case Types::DICTIONARY:
-                    delete kv.second.property.object;
+                    if(((AMF3*)kv.second.property.object)->refCount) {
+                        ((AMF3*)kv.second.property.object)->refCount--;
+                    } else {
+                        delete kv.second.property.object;
+                    }
                 default: // avoids warning
                     break;
             }
@@ -127,7 +127,11 @@ AMF3::~AMF3()
                 case Types::VECTOR_DOUBLE:
                 case Types::VECTOR_OBJECT:
                 case Types::DICTIONARY:
-                    delete prop.property.object;
+                    if(((AMF3*)prop.property.object)->refCount) {
+                        ((AMF3*)prop.property.object)->refCount--;
+                    } else {
+                        delete prop.property.object;
+                    }
                 default: // avoids warning
                     break;
             }
